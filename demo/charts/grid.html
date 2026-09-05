@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BTCUSDT · 1m/5m/15m/30m live grid</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; height: 100%; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--text-primary); display: flex; flex-direction: column; height: 100vh; }
+    .viz-root {
+      color-scheme: light;
+      --page:#f9f9f7; --surface-1:#fcfcfb; --text-primary:#0b0b0b; --text-secondary:#52514e;
+      --muted:#898781; --gridline:#e1e0d9; --baseline:#c3c2b7; --up:#0ca30c; --down:#d03b3b;
+      --ema-5:#2a78d6; --ema-9:#eb6834; --ema-21:#e87ba4; --ema-50:#4a3aa7; --ema-200:#eda100;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:where(:not([data-theme="light"])) .viz-root {
+        color-scheme: dark;
+        --page:#0d0d0d; --surface-1:#1a1a19; --text-primary:#fff; --text-secondary:#c3c2b7;
+        --muted:#898781; --gridline:#2c2c2a; --baseline:#383835; --up:#0ca30c; --down:#e66767;
+        --ema-5:#3987e5; --ema-9:#d95926; --ema-21:#d55181; --ema-50:#9085e9; --ema-200:#c98500;
+      }
+    }
+    header { padding: 10px 16px; border-bottom: 1px solid var(--gridline); background: var(--surface-1); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    h1 { font-size: 14px; margin: 0; font-weight: 600; }
+    .badge { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; }
+    .badge.live { background: rgba(12,163,12,.15); color: var(--up); }
+    .badge.paused { background: rgba(137,135,129,.2); color: var(--muted); }
+    .badge.done { background: rgba(42,120,214,.15); color: var(--ema-5); }
+    .stat { font-size: 12px; color: var(--text-secondary); }
+    .stat b { color: var(--text-primary); font-variant-numeric: tabular-nums; font-weight: 600; }
+    .controls { display: flex; gap: 6px; margin-left: auto; align-items: center; }
+    button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid var(--baseline); background: var(--surface-1); color: var(--text-primary); border-radius: 6px; cursor: pointer; }
+    button:hover { border-color: var(--muted); }
+    .speed.active { background: var(--ema-5); color: #fff; border-color: var(--ema-5); }
+    .sep { width: 1px; height: 20px; background: var(--gridline); margin: 0 4px; }
+
+    #grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px; background: var(--gridline); }
+    .cell { background: var(--surface-1); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .cell-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--gridline); flex-wrap: wrap; }
+    .cell-head .tf { font-weight: 700; font-size: 13px; }
+    .cell-head .last { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); }
+    .li { display: inline-flex; align-items: center; gap: 4px; }
+    .li b { color: var(--text-primary); font-variant-numeric: tabular-nums; font-weight: 500; }
+    .dot { width: 11px; height: 2px; border-radius: 1px; display: inline-block; }
+    .cell-chart { flex: 1 1 auto; min-height: 0; }
+  </style>
+</head>
+<body class="viz-root">
+  <header>
+    <h1>BTCUSDT · multi-timeframe</h1>
+    <span id="status" class="badge live">LIVE</span>
+    <span class="stat">elapsed <b id="elapsed">00:00</b>/10:00</span>
+    <span class="stat">remaining <b id="remaining">10:00</b></span>
+    <span class="stat">ticks <b id="ticks">0</b></span>
+    <div class="controls">
+      <button id="playpause">Pause</button>
+      <div class="sep"></div>
+      <button class="speed" data-s="Slow">Slow</button>
+      <button class="speed" data-s="Normal">Normal</button>
+      <button class="speed active" data-s="Fast">Fast</button>
+      <button class="speed" data-s="Turbo">Turbo</button>
+      <div class="sep"></div>
+      <button id="reset">Reset</button>
+    </div>
+  </header>
+  <div id="grid"></div>
+
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="data_multi.js"></script>
+  <script src="grid.js"></script>
+</body>
+</html>

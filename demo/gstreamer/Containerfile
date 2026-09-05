@@ -1,0 +1,27 @@
+FROM debian:trixie-slim
+
+COPY zscaler-root-ca.pem /usr/local/share/ca-certificates/zscaler-root-ca.crt
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates ffmpeg \
+      gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+      gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav \
+      python3 python3-gi gir1.2-gst-plugins-base-1.0 gir1.2-gstreamer-1.0 \
+      python3-gi-cairo fonts-dejavu-core \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY state.py control.py draw.py app.py ./
+
+ENV INPUT_URL=rtmp://127.0.0.1:1935/raw \
+    OUTPUT_URL=rtmp://127.0.0.1:1935/live \
+    CONTROL_PORT=7800 \
+    VBITRATE_KBPS=4000 \
+    FPS=24 \
+    ENC_THREADS=2 \
+    DEC_THREADS=2 \
+    PYTHONUNBUFFERED=1
+
+CMD ["python3", "app.py"]

@@ -1,0 +1,34 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;height:100%;background:#0a0c0f;overflow:hidden}
+#fps{position:fixed;top:8px;left:10px;color:#5bb46e;font:700 20px monospace;z-index:9}</style>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.min.js"}}</script>
+</head><body>
+<div id="fps">boot</div>
+<canvas id="c"></canvas>
+<script type="module">
+const el=document.getElementById('fps');
+(async()=>{
+  try{
+    const THREE=await import('three');
+    el.textContent='three r'+THREE.REVISION;
+    const cv=document.getElementById('c');
+    const r=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+    r.setSize(500,400);
+    document.body.dataset.state='glok r'+THREE.REVISION;
+    el.textContent='glok r'+THREE.REVISION;
+    const sc=new THREE.Scene();
+    const cam=new THREE.PerspectiveCamera(45,500/400,0.1,100); cam.position.z=4;
+    sc.add(new THREE.AmbientLight(0xffffff,.6));
+    const key=new THREE.DirectionalLight(0xaad4ff,1.2); key.position.set(3,4,5); sc.add(key);
+    const m=new THREE.Mesh(new THREE.IcosahedronGeometry(1.2,3),
+      new THREE.MeshStandardMaterial({color:0x8fb6ff,metalness:.4,roughness:.25})); sc.add(m);
+    let n=0,t0=performance.now();
+    function loop(){ m.rotation.y+=0.02; r.render(sc,cam); n++;
+      const dt=performance.now()-t0; if(dt>1000){ const f=Math.round(n*1000/dt);
+        el.textContent='glok r'+THREE.REVISION+' '+f+'fps'; document.body.dataset.state='fps'+f; n=0; t0=performance.now(); }
+      requestAnimationFrame(loop); }
+    loop();
+  }catch(e){ el.textContent='ERR '+e.message; document.body.dataset.state='err:'+e.message; }
+})();
+</script>
+</body></html>

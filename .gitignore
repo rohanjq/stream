@@ -1,0 +1,16 @@
+# Real secrets — copy the .example file and fill in your own values.
+demo/ai.env
+
+# Local scratch/debug output accumulated during development
+demo/*.png
+demo/frame.png
+
+# Large binaries fetched at build time now (see demo/Containerfile) —
+# these were only here as a workaround for one machine's specific
+# corporate proxy and aren't portable/needed elsewhere.
+demo/piperpkg/
+
+# OS/editor noise
+.DS_Store
+.claude/
+demo/smelter/

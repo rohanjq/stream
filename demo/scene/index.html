@@ -1,0 +1,225 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script type="importmap">{"imports":{
+  "three":"/vendor/three.module.min.js",
+  "three-vrm":"/vendor/three-vrm.module.js"
+}}</script>
+<style>
+  :root{
+    --bg:#0a0c0f; --bg2:#0e1116; --panel:#13171d; --panel2:#181d25;
+    --line:#272d37; --fg:#e7ebf1; --mut:#828a97; --accent:#aeb6c4;
+    --ai:#5bb46e; --gold:#e6c04c; --red:#df5559; --up:#4a9d8e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);overflow:hidden;
+    font-family:'DejaVu Sans','Liberation Sans',system-ui,sans-serif}
+  #app{display:flex;flex-direction:column;height:100vh}
+
+  /* ---- top ticker ---- */
+  #ticker{height:46px;display:flex;align-items:center;gap:14px;padding:0 14px;
+    background:linear-gradient(180deg,#12161c,#0a0d11);border-bottom:1px solid var(--line)}
+  .tag{display:flex;align-items:center;gap:8px;font-weight:800;font-size:14px;letter-spacing:.05em;
+    color:var(--ai);border:1px solid rgba(91,180,110,.4);background:rgba(91,180,110,.08);
+    padding:5px 12px;border-radius:8px;white-space:nowrap}
+  .tag .sq{width:9px;height:9px;background:var(--ai);border-radius:2px}
+  #liveTag{color:#fff;font-weight:800;font-size:13px;white-space:nowrap}
+  #liveTag .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);
+    margin-right:6px;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  #tickerScroll{flex:1;overflow:hidden;white-space:nowrap;position:relative;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+  #tickerScroll .run{display:inline-block;padding-left:100%;animation:marquee 38s linear infinite;
+    font-size:15px;color:#c4cbd6}
+  #tickerScroll .run b{color:var(--gold);margin:0 6px}
+  .sepdot{color:var(--mut);margin:0 22px}
+  @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+
+  /* ---- main ---- */
+  #main{flex:1;display:flex;gap:10px;padding:10px;min-height:0}
+  #chartWrap{flex:1;position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    background:#0c0e15;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  #chart{width:100%;height:100%;border:0;display:block}
+  #chartBadge{position:absolute;top:12px;left:14px;display:flex;gap:8px;align-items:center;z-index:5}
+  #chartBadge .sym{font-weight:800;font-size:15px;background:rgba(0,0,0,.5);padding:4px 10px;border-radius:7px}
+  #chartBadge .rep{font-size:11px;font-weight:800;letter-spacing:.06em;color:#12140a;background:var(--gold);
+    padding:4px 8px;border-radius:6px}
+
+  /* ---- right column ---- */
+  #side{width:328px;display:flex;flex-direction:column;gap:10px;min-height:0}
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+    border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.45)}
+
+  /* countdown card */
+  #eventCard{padding:13px 15px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;
+    letter-spacing:.08em;color:var(--mut);text-transform:uppercase;font-weight:800}
+  .card-h .flag{color:var(--gold)}
+  #countdown{font-family:'DejaVu Sans Mono',monospace;font-weight:800;font-size:44px;text-align:center;
+    color:var(--gold);letter-spacing:3px;margin:6px 0 2px;text-shadow:0 0 18px rgba(230,192,76,.3)}
+  #cdLabel{text-align:center;color:var(--mut);font-size:13px;margin-bottom:11px}
+  .stats{display:flex;gap:9px}
+  .stat{flex:1;background:#0b0e13;border:1px solid var(--line);border-radius:9px;padding:7px 10px;text-align:center}
+  .stat .k{font-size:10px;color:var(--mut);letter-spacing:.06em}
+  .stat .v{font-size:19px;font-weight:800;margin-top:2px}
+
+  /* AMA / character + chat */
+  #ama{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  #amaHead{padding:11px 15px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(174,182,196,.07),transparent)}
+  #amaHead .t{font-weight:800;font-size:16px}
+  #amaHead .s{font-size:11px;color:var(--mut);letter-spacing:.06em;margin-top:1px}
+  #stage{position:relative;height:210px;flex:none;display:flex;align-items:stretch;justify-content:center;
+    background:radial-gradient(160px 120px at 50% 96%,rgba(140,170,255,.12),transparent);overflow:hidden}
+  #charCanvas{width:100%;height:100%;display:block}
+  #botState{position:absolute;top:10px;right:12px;font-size:11px;color:var(--mut);
+    background:rgba(0,0,0,.4);padding:3px 9px;border-radius:20px}
+  #feed{flex:1;overflow:hidden;padding:11px 13px;display:flex;flex-direction:column;gap:8px;justify-content:flex-end}
+  .msg{font-size:15px;line-height:1.34;animation:in .25s ease}
+  .msg .name{font-weight:800;margin-right:6px}
+  .msg.viewer .name{color:var(--accent)}
+  .msg.ai{background:rgba(91,180,110,.1);border-left:3px solid var(--ai);padding:7px 10px;border-radius:8px}
+  .msg.ai .name{color:var(--ai)}
+  @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  /* ---- bottom brand bar ---- */
+  #brand{height:40px;display:flex;align-items:center;gap:24px;padding:0 18px;font-size:13px;
+    color:#a9b1bd;background:linear-gradient(180deg,#0a0d11,#0d1218);border-top:1px solid var(--line)}
+  #brand .b{font-weight:800;color:#fff;background:rgba(174,182,196,.12);border:1px solid rgba(174,182,196,.28);
+    padding:5px 12px;border-radius:8px}
+  #brand .m{color:var(--mut)}
+  #viewers{margin-left:auto;display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;
+    background:#0b0e13;border:1px solid var(--line);padding:6px 14px;border-radius:22px}
+  #viewers .d{width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.4s infinite}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="ticker">
+    <div class="tag"><span class="sq"></span>AI BRIEF</div>
+    <div id="liveTag"><span class="dot"></span>LIVE</div>
+    <div id="tickerScroll"><span class="run" id="run"></span></div>
+  </div>
+
+  <div id="main">
+    <div id="chartWrap">
+      <div id="chartBadge"><span class="sym">GOLD · XAU/USD</span><span class="rep">REPLAY</span></div>
+      <iframe id="chart" src="/charts/chart.html?mode=replay&tf=1m,5m,15m,1h&stream=1"></iframe>
+    </div>
+
+    <div id="side">
+      <div class="card" id="eventCard">
+        <div class="card-h"><span>Market Event</span><span class="flag">■ US</span></div>
+        <div id="countdown">07:17:14</div>
+        <div id="cdLabel">Nonfarm Payrolls · release in</div>
+        <div class="stats">
+          <div class="stat"><div class="k">FORECAST</div><div class="v" style="color:var(--gold)">55K</div></div>
+          <div class="stat"><div class="k">PREVIOUS</div><div class="v" style="color:var(--red)">-23K</div></div>
+        </div>
+      </div>
+
+      <div class="card" id="ama">
+        <div id="amaHead">
+          <div class="t">Ask Me Anything</div><div class="s">CHAT · COMMENT · INTERACT</div>
+        </div>
+        <div id="stage">
+          <div id="botState">idle</div>
+          <canvas id="charCanvas"></canvas>
+        </div>
+        <div id="feed"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="brand">
+    <span class="b">CONTACT US</span>
+    <span class="m">✈ @yourhandle</span>
+    <span class="m">✉ contact@yourdomain.com</span>
+    <span class="m">◈ yourdomain.com</span>
+    <div id="viewers"><span class="d"></span><span id="vcount">942</span></div>
+  </div>
+
+</div>
+
+<script>
+  const heads = [
+    "HIDDEN DANGER IN LEVERAGED GOLD ETFS LIKE UGL AND GLL",
+    "TEUCRIUM LAUNCHES TPMT, A NEW PHYSICAL GOLD ETF WITH A 0.24% FEE",
+    "GOLD HOLDS ABOVE KEY SUPPORT AS DOLLAR SOFTENS",
+    "TRADERS EYE NONFARM PAYROLLS FOR NEXT DIRECTIONAL CUE",
+  ];
+  document.getElementById('run').innerHTML =
+    heads.map(h => '<b>▸</b>' + h).join('<span class="sepdot">•</span>') + '<span class="sepdot">•</span>';
+
+  let cd = 7*3600 + 17*60 + 14;
+  const cdEl = document.getElementById('countdown');
+  setInterval(() => {
+    cd = Math.max(0, cd - 1);
+    const p = n => String(n).padStart(2,'0');
+    cdEl.textContent = `${p(Math.floor(cd/3600))}:${p(Math.floor(cd%3600/60))}:${p(cd%60)}`;
+  }, 1000);
+
+  const vc = document.getElementById('vcount'); let v = 942;
+  setInterval(() => { v = Math.max(800, v + Math.round((Math.random()-0.45)*8)); vc.textContent = v; }, 3000);
+
+  const bs = document.getElementById('botState');
+  let audioCtx = null;
+  function setReading(){ bs.textContent='reading chat…'; }
+  function setMouth(v){ if(window.char) window.char.setMouth(v); }
+
+  // Play the reply audio IN the browser and drive the mouth from its live
+  // amplitude. The audio also goes out to PulseAudio -> ffmpeg, so the mouth
+  // (captured in video) and the voice (captured from pulse) share one timeline.
+  function speakAndLipsync(url){
+    if(!url){ return; }
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    audioCtx.resume && audioCtx.resume();
+    const a = new Audio(url);
+    let src;
+    try { src = audioCtx.createMediaElementSource(a); } catch(e){ a.play(); return; }
+    const an = audioCtx.createAnalyser(); an.fftSize = 256;
+    src.connect(an); an.connect(audioCtx.destination);
+    const buf = new Uint8Array(an.fftSize);
+    bs.textContent='speaking…';
+    function frame(){
+      an.getByteTimeDomainData(buf);
+      let sum=0; for(let i=0;i<buf.length;i++){ const x=(buf[i]-128)/128; sum+=x*x; }
+      const rms = Math.sqrt(sum/buf.length);
+      setMouth(Math.min(1, rms*4.5));
+      if(!a.paused && !a.ended){ requestAnimationFrame(frame); }
+    }
+    a.onplay = ()=> requestAnimationFrame(frame);
+    a.onended = ()=>{ bs.textContent='idle'; setMouth(0); };
+    a.play().catch(()=>{ bs.textContent='idle'; setMouth(0); });
+  }
+
+  const feed = document.getElementById('feed');
+  let since = 0;
+  async function poll(){
+    try{
+      const r = await fetch('/api/messages?since='+since);
+      const d = await r.json(); since = d.last;
+      for(const m of d.messages){
+        const el = document.createElement('div');
+        el.className = 'msg ' + (m.kind === 'ai' ? 'ai' : 'viewer');
+        el.innerHTML = '<span class="name"></span><span class="text"></span>';
+        el.querySelector('.name').textContent = m.who + ':';
+        el.querySelector('.text').textContent = m.text;
+        feed.appendChild(el);
+        if (m.kind === 'ai') speakAndLipsync(m.audio_url); else setReading();
+      }
+      while (feed.children.length > 7) feed.removeChild(feed.firstChild);
+    }catch(e){}
+    setTimeout(poll, 600);
+  }
+  poll();
+</script>
+<script type="module">
+  import { initChar } from '/char3d.js';
+  try { window.char = initChar(document.getElementById('charCanvas'), document.getElementById('botState')); }
+  catch(e){ console.error('char3d init failed', e); }
+</script>
+</body>
+</html>

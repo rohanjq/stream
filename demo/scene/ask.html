@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ask the AI host</title>
+<style>
+  :root{--bg:#0b0f14;--panel:#111823;--line:#1e2a3a;--fg:#e6edf3;--mut:#8b98a5;--accent:#5eb3ff;--ai:#3fb950;}
+  *{box-sizing:border-box}
+  body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);
+    font-family:'DejaVu Sans','Liberation Sans',system-ui,sans-serif}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);font-weight:bold;font-size:18px}
+  header span{color:var(--mut);font-weight:normal;font-size:14px;margin-left:8px}
+  #feed{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+  .msg{max-width:80%;font-size:16px;line-height:1.4}
+  .msg .name{font-weight:bold;margin-right:8px}
+  .msg.viewer .name{color:var(--accent)}
+  .msg.you{align-self:flex-end;background:#173a5e;padding:9px 13px;border-radius:12px 12px 2px 12px}
+  .msg.ai{background:rgba(63,185,80,.12);border-left:3px solid var(--ai);padding:9px 13px;border-radius:8px}
+  .msg.ai .name{color:var(--ai)}
+  #thinking{color:var(--mut);font-style:italic;display:none;padding:0 18px 6px}
+  form{display:flex;gap:10px;padding:14px 18px;border-top:1px solid var(--line)}
+  input,button{font-size:16px;border-radius:8px;border:1px solid var(--line)}
+  input{flex:1;padding:12px 14px;background:var(--panel);color:var(--fg)}
+  button{padding:12px 20px;background:var(--accent);color:#04121f;font-weight:bold;border:none;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+</style>
+</head>
+<body>
+  <header>Ask the AI host <span>type a question — it goes into the live chat and gets answered by DeepSeek</span></header>
+  <div id="feed"></div>
+  <div id="thinking">AI host is typing…</div>
+  <form id="form">
+    <input id="name" style="max-width:130px" placeholder="your name" value="you">
+    <input id="text" placeholder="Ask something…" autocomplete="off" autofocus>
+    <button id="send" type="submit">Send</button>
+  </form>
+
+<script>
+  const feed = document.getElementById('feed');
+  const thinking = document.getElementById('thinking');
+  let since = 0;
+
+  function render(m){
+    const el = document.createElement('div');
+    const cls = m.kind === 'ai' ? 'ai' : (m.who === window._me ? 'you' : 'viewer');
+    el.className = 'msg ' + cls;
+    el.innerHTML = '<span class="name"></span><span class="text"></span>';
+    el.querySelector('.name').textContent = (cls === 'you') ? '' : m.who + ':';
+    el.querySelector('.text').textContent = m.text;
+    feed.appendChild(el);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  async function poll(){
+    try{
+      const r = await fetch('/api/messages?since='+since);
+      const d = await r.json(); since = d.last;
+      d.messages.forEach(render);
+    }catch(e){}
+    setTimeout(poll, 800);
+  }
+  poll();
+
+  const form = document.getElementById('form');
+  const send = document.getElementById('send');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = document.getElementById('text').value.trim();
+    const who = (document.getElementById('name').value.trim() || 'you');
+    if(!text) return;
+    window._me = who;
+    document.getElementById('text').value = '';
+    send.disabled = true; thinking.style.display = 'block';
+    try{
+      await fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({who, text})});
+    }catch(e){}
+    send.disabled = false; thinking.style.display = 'none';
+    document.getElementById('text').focus();
+  });
+</script>
+</body>
+</html>

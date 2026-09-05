@@ -1,0 +1,45 @@
+FROM debian:bookworm-slim
+
+# If your build network has TLS interception (corporate proxy), this fixes
+# it — a root CA cert with no matching interception is a harmless no-op,
+# so this is safe to leave in even on a network that doesn't need it. See
+# README.md's "Corporate proxy / TLS interception" section.
+COPY zscaler-root-ca.pem /usr/local/share/ca-certificates/zscaler-root-ca.crt
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      xvfb \
+      chromium \
+      ffmpeg \
+      python3 \
+      pulseaudio pulseaudio-utils \
+      libgomp1 curl \
+      fonts-dejavu-core fonts-liberation \
+      procps ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Piper TTS (offline neural voice) + voice model. Auto-detects arch (works
+# on both x86_64 and arm64 targets).
+RUN set -eux; \
+    arch="$(uname -m)"; case "$arch" in aarch64|arm64) pa=aarch64 ;; *) pa=x86_64 ;; esac; \
+    mkdir -p /opt/piper/voices; cd /opt/piper; \
+    curl -fsSL "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_${pa}.tar.gz" -o piper.tgz; \
+    tar -xzf piper.tgz && rm piper.tgz; \
+    curl -fsSL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx" -o voices/en_US-amy-medium.onnx; \
+    curl -fsSL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json" -o voices/en_US-amy-medium.onnx.json
+
+COPY scene /opt/app/scene
+COPY charts /opt/app/charts
+COPY ai.py scene_server.py chat_worker.py start.sh /opt/app/
+RUN chmod +x /opt/app/start.sh
+
+# Demo defaults (x264 CPU encode; no GPU in the podman VM)
+ENV WIDTH=1280 HEIGHT=720 FPS=30 VBITRATE=2500k \
+    RTMP_TARGET=rtmp://127.0.0.1:1935/live \
+    SCENE_PORT=8080 SCENE_BASE=http://127.0.0.1:8080 \
+    PIPER_BIN=/opt/piper/piper/piper \
+    PIPER_VOICE=/opt/piper/voices/en_US-amy-medium.onnx
+
+WORKDIR /opt/app
+CMD ["/opt/app/start.sh"]

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BTCUSDT · configurable live chart</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; height: 100%; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--text-primary); display: flex; flex-direction: column; height: 100vh; }
+    .viz-root {
+      color-scheme: light;
+      --page:#f9f9f7; --surface-1:#fcfcfb; --text-primary:#0b0b0b; --text-secondary:#52514e;
+      --muted:#898781; --gridline:#e1e0d9; --baseline:#c3c2b7; --up:#0ca30c; --down:#d03b3b;
+      --ema-5:#2a78d6; --ema-9:#eb6834; --ema-21:#e87ba4; --ema-50:#4a3aa7; --ema-200:#eda100;
+      --level-res:#d03b3b; --level-sup:#0ca30c; --struct:#4a3aa7; --struct-bear:#eb6834;
+    }
+    /* TradingView-style dark theme */
+    @media (prefers-color-scheme: dark) {
+      :root:where(:not([data-theme="light"])) .viz-root {
+        color-scheme: dark;
+        --page:#0c0e15; --surface-1:#131722; --text-primary:#d1d4dc; --text-secondary:#b2b5be;
+        --muted:#787b86; --gridline:#1e222d; --baseline:#2a2e39; --up:#26a69a; --down:#ef5350;
+        --ema-5:#2962ff; --ema-9:#ff9800; --ema-21:#e040fb; --ema-50:#00bcd4; --ema-200:#ffeb3b;
+        --level-res:#ef5350; --level-sup:#26a69a; --struct:#2962ff; --struct-bear:#ff9800;
+      }
+    }
+    /* explicit dark scope — applies regardless of OS setting (default theme) */
+    :root[data-theme="dark"] .viz-root {
+      color-scheme: dark;
+      --page:#0c0e15; --surface-1:#131722; --text-primary:#d1d4dc; --text-secondary:#b2b5be;
+      --muted:#787b86; --gridline:#1e222d; --baseline:#2a2e39; --up:#26a69a; --down:#ef5350;
+      --ema-5:#2962ff; --ema-9:#ff9800; --ema-21:#e040fb; --ema-50:#00bcd4; --ema-200:#ffeb3b;
+      --level-res:#ef5350; --level-sup:#26a69a; --struct:#2962ff; --struct-bear:#ff9800;
+    }
+    header { padding: 10px 16px; border-bottom: 1px solid var(--gridline); background: var(--surface-1); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    h1 { font-size: 14px; margin: 0; font-weight: 600; }
+    .badge { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; }
+    .badge.live { background: rgba(12,163,12,.15); color: var(--up); }
+    .badge.paused { background: rgba(137,135,129,.2); color: var(--muted); }
+    .badge.done { background: rgba(42,120,214,.15); color: var(--ema-5); }
+    .badge.bull { background: rgba(12,163,12,.18); color: var(--up); }
+    .badge.bear { background: rgba(208,59,59,.20); color: var(--down); }
+    .badge.rng { background: rgba(137,135,129,.22); color: var(--muted); }
+    @keyframes structFlash { 0% { transform: scale(1.18); filter: brightness(1.6); } 100% { transform: scale(1); filter: none; } }
+    .badge.flash { animation: structFlash .5s ease-out; }
+    .stat { font-size: 12px; color: var(--text-secondary); }
+    .stat b { color: var(--text-primary); font-variant-numeric: tabular-nums; font-weight: 600; }
+    .controls { display: flex; gap: 6px; margin-left: auto; align-items: center; }
+    button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid var(--baseline); background: var(--surface-1); color: var(--text-primary); border-radius: 6px; cursor: pointer; }
+    button:hover { border-color: var(--muted); }
+    .speed.active { background: var(--ema-5); color: #fff; border-color: var(--ema-5); }
+    .sep { width: 1px; height: 20px; background: var(--gridline); margin: 0 4px; }
+    #toggles { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; padding-top: 4px; }
+    #toggles .grp-label { font-size: 11px; color: var(--muted); margin-right: 2px; text-transform: uppercase; letter-spacing: .04em; }
+    .chip { font-size: 11px; padding: 3px 9px; border: 1px solid var(--baseline); border-radius: 999px; cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); background: transparent; }
+    .chip .dot { width: 10px; height: 3px; border-radius: 2px; opacity: .35; }
+    .chip.on { color: var(--text-primary); border-color: var(--muted); }
+    .chip.on .dot { opacity: 1; }
+    .trade.long { border-color: var(--level-sup); color: var(--level-sup); }
+    .trade.short { border-color: var(--level-res); color: var(--level-res); }
+    .trade.armed { background: var(--ema-5); color: #fff; border-color: var(--ema-5); }
+    .tin { font-size: 11px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; }
+    .tin input { width: 54px; font: inherit; font-size: 11px; padding: 3px 5px; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--baseline); border-radius: 5px; }
+    #tradesPanel, #signalsPanel { position: fixed; bottom: 10px; width: 320px; max-height: 42vh; overflow: auto; background: var(--surface-1); border: 1px solid var(--gridline); border-radius: 8px; font-size: 11px; color: var(--text-secondary); z-index: 30; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+    #tradesPanel { right: 10px; }
+    #signalsPanel { left: 10px; display: none; }
+    #signalsPanel.open { display: block; }
+    .tp-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--gridline); font-weight: 600; color: var(--text-primary); position: sticky; top: 0; background: var(--surface-1); }
+    .tp-row { padding: 5px 10px; border-bottom: 1px solid var(--gridline); display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+    .tp-row .muted, .muted { color: var(--muted); }
+    .win { color: var(--level-sup); } .loss { color: var(--level-res); }
+    .tp-close, .tp-min { cursor: pointer; color: var(--muted); }
+    .tp-head { cursor: move; }
+    #tradesPanel.collapsed .tp-row, #signalsPanel.collapsed .tp-row { display: none; }
+    #grid { flex: 1 1 auto; min-height: 0; display: grid; gap: 1px; background: var(--gridline); }
+    .cell { background: var(--surface-1); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .cell-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--gridline); flex-wrap: wrap; }
+    .cell-head .tf { font-weight: 700; font-size: 13px; }
+    .cell-head .ptrend { font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+    .cell-head .last { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); }
+    .li { display: inline-flex; align-items: center; gap: 4px; }
+    .li b { color: var(--text-primary); font-variant-numeric: tabular-nums; font-weight: 500; }
+    .dot { width: 11px; height: 2px; border-radius: 1px; display: inline-block; }
+    .cell-chart { flex: 1 1 auto; min-height: 0; }
+    /* stream capture mode: hide all UI chrome, chart fills the frame */
+    body.stream header { display: none !important; }
+    body.stream #tradesPanel, body.stream #signalsPanel { display: none !important; }
+    body.stream #grid { gap: 0; }
+    body.stream .cell-head { display: none !important; }
+  </style>
+</head>
+<body class="viz-root">
+  <script>if (new URLSearchParams(location.search).get('stream') === '1') document.body.classList.add('stream');</script>
+  <header>
+    <h1>GOLD (XAU)</h1>
+    <span id="status" class="badge live">REPLAY</span>
+    <span id="structTrend" class="badge rng">STRUCTURE —</span>
+    <span class="stat">bar <b id="elapsed">0/0</b></span>
+    <span class="stat">price <b id="remaining">—</b></span>
+    <span class="stat">ticks <b id="ticks">0</b></span>
+    <div class="controls">
+      <button id="playpause">Pause</button>
+      <div class="sep"></div>
+      <button class="speed" data-s="Slow">Slow</button>
+      <button class="speed" data-s="Normal">Normal</button>
+      <button class="speed active" data-s="Fast">Fast</button>
+      <button class="speed" data-s="Turbo">Turbo</button>
+      <div class="sep"></div>
+      <button id="btnMode">Mode</button>
+      <button id="btnSignals">Events</button>
+      <button id="reset">Reset</button>
+      <div class="sep"></div>
+      <button id="btnLong" class="trade long">＋ Long</button>
+      <button id="btnShort" class="trade short">＋ Short</button>
+      <label class="tin">risk <input id="tRisk" type="number" step="0.1" placeholder="auto" /></label>
+      <label class="tin">RR <input id="tRR" type="number" step="0.5" value="2" /></label>
+      <label class="tin">qty <input id="tQty" type="number" step="1" value="1" /></label>
+      <button id="btnClearTrades">Clear</button>
+    </div>
+    <div id="toggles"></div>
+  </header>
+  <div id="grid"></div>
+
+  <script src="vendor/lightweight-charts.js"></script>
+  <script src="data_gold.js"></script>
+  <script src="data_live.js"></script>
+  <script src="overlays.js"></script>
+  <script src="indicators.js"></script>
+  <script src="trades.js"></script>
+  <script src="feed.js"></script>
+  <script src="chart.js"></script>
+</body>
+</html>

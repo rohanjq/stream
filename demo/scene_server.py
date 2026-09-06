@@ -852,7 +852,6 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path not in ("/api/messages", "/api/ask", "/api/control",
                         "/api/youtube/publish", "/api/youtube/policy",
-                "/api/youtube/mock-message",
                         "/api/voice", "/api/speech/trigger",
                         "/api/audience/policy", "/api/music/play",
                         "/api/music/next", "/api/music/previous",
@@ -912,29 +911,6 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(200, update_youtube_policy(payload))
             except ValueError as exc:
-                return self._json(400, {"error": str(exc)})
-
-        if path == "/api/youtube/mock-message":
-            if not self._external_action_authorized():
-                return self._json(401, {"error": "unauthorized"})
-            text = " ".join(str(payload.get("text") or "").split()).strip()
-            if not text:
-                return self._json(400, {"error": "text is required"})
-            if not _youtube_bridge or _youtube_bridge.status().get("transport") != "mock":
-                return self._json(409, {"error": "mock YouTube chat is not enabled"})
-            try:
-                item = _youtube_bridge.client.inject(
-                    text,
-                    author=str(payload.get("author") or "Mock viewer")[:80],
-                    is_moderator=bool(payload.get("is_moderator", False)),
-                    is_sponsor=bool(payload.get("is_sponsor", False)),
-                    event_type=str(payload.get("event_type") or "textMessageEvent"),
-                    amount_micros=int(payload.get("amount_micros") or 0),
-                    purchase_amount=str(payload.get("purchase_amount") or ""),
-                    tier=int(payload.get("tier") or 0),
-                )
-                return self._json(202, {"accepted": True, "id": item["id"]})
-            except (TypeError, ValueError) as exc:
                 return self._json(400, {"error": str(exc)})
 
         if path == "/api/audience/policy":

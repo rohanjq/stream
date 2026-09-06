@@ -8,7 +8,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import ai
-from youtube_chat import MockYouTubeClient, OAuthTokens, YouTubeBridge
+from youtube_chat import OAuthTokens, YouTubeBridge
 
 
 class FakeTokens:
@@ -105,23 +105,6 @@ class YouTubeBridgeTests(unittest.TestCase):
         self.assertEqual(item["category"], "help")
         with self.assertRaises(ValueError):
             bridge.publish("x" * 201)
-
-    def test_mock_transport_emits_the_same_normalized_shape(self):
-        received = []
-        client = MockYouTubeClient()
-        bridge = YouTubeBridge(client, received.append,
-                               live_chat_id="mock-live-chat", transport="mock")
-        bridge.start()
-        client.inject("show 5m", author="Local Tester", is_moderator=True)
-        deadline = time.time() + 3
-        while not received and time.time() < deadline:
-            time.sleep(0.02)
-        bridge._stop.set()
-        self.assertEqual(received[0]["author"], "Local Tester")
-        self.assertEqual(received[0]["text"], "show 5m")
-        self.assertEqual(received[0]["platform"], "youtube")
-        self.assertTrue(received[0]["is_moderator"])
-
 
 class ReplySelectionTests(unittest.TestCase):
     def test_offline_selector_skips_chatter_and_answers_questions(self):

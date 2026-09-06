@@ -2,7 +2,7 @@
 set -euo pipefail
 
 : "${WIDTH:=1280}" "${HEIGHT:=720}" "${FPS:=24}" "${VBITRATE:=2500k}"
-: "${RTMP_TARGET:=rtmp://127.0.0.1:1935/live}" "${SCENE_PORT:=8080}"
+: "${RTMP_TARGET:=rtmp://127.0.0.1:1935/live}" "${SCENE_PORT:=8080}" "${OPERATOR_PORT:=8082}"
 : "${MUSIC_VOLUME:=0.35}" "${MUSIC_CONTROL_PORT:=8091}"
 export DISPLAY=:99 HOME=/root
 export XDG_RUNTIME_DIR=/tmp/xdgr
@@ -29,6 +29,7 @@ supervise() {
 pkill -x ffmpeg 2>/dev/null || true
 pkill -x paplay 2>/dev/null || true
 pkill -f scene_server.py 2>/dev/null || true
+pkill -f control_panel_server.py 2>/dev/null || true
 pkill -f music_player.py 2>/dev/null || true
 
 # ---- audio: PulseAudio null sink (TTS -> sink -> ffmpeg -> stream) ----
@@ -73,6 +74,8 @@ fi
 # ---- scene server (serves the composite + /charts app + /api) ----
 echo "[start] scene_server on :${SCENE_PORT}"
 supervise scene-server python3 /opt/app/scene_server.py &
+echo "[start] control_panel on :${OPERATOR_PORT}"
+supervise control-panel python3 /opt/app/control_panel_server.py &
 sleep 1
 # No ambient chat worker — questions come from the user via /ask.html or /api/ask.
 

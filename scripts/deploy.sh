@@ -11,8 +11,10 @@ cd "$PROJECT_ROOT"
 
 echo "Waiting for the scene API..."
 for _ in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:8080/api/health >/dev/null 2>&1; then
+  if curl -fsS http://127.0.0.1:8080/api/health >/dev/null 2>&1 && \
+     curl -fsS "http://127.0.0.1:${OPERATOR_HOST_PORT:-8082}/healthz" >/dev/null 2>&1; then
     echo "deployment healthy"
+    echo "control: http://127.0.0.1:${OPERATOR_HOST_PORT:-8082}/"
     echo "scene:   http://127.0.0.1:8080/"
     echo "preview: http://127.0.0.1:8888/raw/"
     exit 0

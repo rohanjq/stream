@@ -8,7 +8,7 @@ The root `compose.yaml` is the source of truth.
 | Component | Responsibility | Failure behavior |
 |---|---|---|
 | MediaMTX | Local RTMP handoff and raw HLS preview | Compose restarts it |
-| App | Scene API, Chromium render, PulseAudio, music, speech, YouTube chat, raw encoder | Workers restart internally; health/restart is the final boundary |
+| App | Operator console, scene API, Chromium render, PulseAudio, music, speech, YouTube chat, raw encoder | Workers restart internally; health/restart is the final boundary |
 | GStreamer compositor | Reads `/raw`, draws Cairo overlays, re-encodes video, passes AAC through | Watchdog exits on a stalled frame path; Compose restarts it |
 | External OHLC service | Historical snapshot and forming-candle WebSocket events | Chart reconnects; URL is configured in `config/stream.env` |
 | YouTube | gRPC live-chat input and RTMPS output | Chat backs off/reconnects; RTMP egress retries |
@@ -54,7 +54,7 @@ Data and control:
 ```text
 OHLC WebSocket -> browser chart feed -> in-place candle updates
 YouTube streamList gRPC -> policy/router -> announce first -> action callback
-operator HTTP API ------> control state -> postMessage -> chart (no reload)
+operator console (:8082) -> scene API -> control state -> chart (no reload)
 indicator/notifier -----> shared priority speech queue
 ```
 
@@ -69,6 +69,8 @@ The chart source and symbol come from `/api/runtime-config`, populated by
 | `config/stream.env` | Tracked normal configuration |
 | `compose.yaml` | Canonical complete stack |
 | `demo/start.sh` | App-container supervisor and media encoder |
+| `demo/control_panel_server.py` | Dedicated operator UI and scene API proxy |
+| `demo/control/` | Primary responsive operator console |
 | `demo/scene_server.py` | HTTP API, speech coordination, chat integration |
 | `demo/youtube_chat.py` | Official YouTube gRPC consumer/outbound messages |
 | `demo/audience_commands.py` | Extensible command policy/router |
@@ -109,6 +111,13 @@ the OAuth client secret, revoke/reissue the refresh token, and reset the
 YouTube stream key before production.
 
 ## HTTP APIs
+
+Operator console (`:8082`): the primary UI for scene layout, overlays, speech,
+YouTube replies/posts, audience-command policy, music, activity, and runtime
+status. It proxies `/api/*` to the loopback scene API so the browser uses one
+origin and forwards the operator bearer token unchanged. `GET /healthz` checks
+the console listener itself. `/compositor-api/*` proxies the GStreamer control
+service for output layouts, update callouts, polls, votes, and leaderboards.
 
 Scene service (`:8080`):
 

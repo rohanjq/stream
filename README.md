@@ -30,14 +30,17 @@ state during redeploys.
 
 Local endpoints (bound to `127.0.0.1` by default):
 
-- Scene/admin UI: `http://127.0.0.1:8080/`
-- Control panel: `http://127.0.0.1:8080/control.html`
+- Primary operator console: `http://127.0.0.1:8082/`
+- Broadcast scene: `http://127.0.0.1:8080/`
 - Raw pre-compositor HLS preview: `http://127.0.0.1:8888/raw/`
 - Scene health: `http://127.0.0.1:8080/api/health`
 - GStreamer health: `http://127.0.0.1:7800/health`
 
 Set `STREAM_BIND_ADDRESS=0.0.0.0` in `.env` only behind a firewall/reverse
-proxy. Write endpoints require the bearer token in `CONTROL_TOKEN`.
+proxy. Change `OPERATOR_HOST_PORT` if port 8082 is occupied. Write endpoints
+use `CONTROL_TOKEN`. The localhost-only console applies that token server-side;
+when bound beyond localhost, enter it in Settings and it remains scoped to that
+browser tab session.
 
 ## Day-to-day commands
 

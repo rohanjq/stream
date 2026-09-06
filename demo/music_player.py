@@ -36,6 +36,7 @@ class Player:
         self.process = None
         self.started_at = None
         self.error = None
+        self.sink_input = None
         self._restore()
 
     def _restore(self):
@@ -90,6 +91,7 @@ class Player:
                 "elapsed_seconds": max(0, int(time.time() - self.started_at))
                     if self.started_at and self.playing else 0,
                 "error": self.error,
+                "sink_input": self.sink_input,
             }
 
     def catalog(self):
@@ -148,9 +150,54 @@ class Player:
             raise ValueError("volume must be between 0 and 1")
         with self.lock:
             self.volume = value
+            process = self.process
             self._persist_locked()
-        self.changed.set()
+        if process and process.poll() is None:
+            self._apply_volume(process, value, attempts=3)
         return self.status()
+
+    def _sink_input_for_pid(self, process_id):
+        try:
+            result = subprocess.run(
+                ["pactl", "list", "sink-inputs"], env={
+                    **os.environ, "PULSE_SERVER": PULSE_SERVER,
+                }, capture_output=True, text=True, timeout=3, check=True)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        current = None
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("Sink Input #"):
+                try:
+                    current = int(stripped.removeprefix("Sink Input #"))
+                except ValueError:
+                    current = None
+            elif (current is not None and
+                  stripped == f'application.process.id = "{process_id}"'):
+                return current
+        return None
+
+    def _apply_volume(self, process, volume, attempts=1):
+        for attempt in range(attempts):
+            if process.poll() is not None:
+                return False
+            sink_input = self._sink_input_for_pid(process.pid)
+            if sink_input is not None:
+                try:
+                    subprocess.run([
+                        "pactl", "set-sink-input-volume", str(sink_input),
+                        f"{volume * 100:.2f}%",
+                    ], env={**os.environ, "PULSE_SERVER": PULSE_SERVER},
+                       capture_output=True, timeout=3, check=True)
+                    with self.lock:
+                        if self.process is process:
+                            self.sink_input = sink_input
+                    return True
+                except (OSError, subprocess.SubprocessError):
+                    return False
+            if attempt + 1 < attempts:
+                time.sleep(0.05)
+        return False
 
     def run(self):
         while True:
@@ -164,7 +211,7 @@ class Player:
                 continue
             command = [
                 "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                "-i", track["file"], "-af", f"volume={volume},aresample=48000",
+                "-i", track["file"], "-af", "aresample=48000",
                 "-ar", "48000", "-ac", "2", "-f", "pulse", "ytsink",
             ]
             env = os.environ.copy()
@@ -173,7 +220,10 @@ class Player:
                 with self.lock:
                     self.started_at = time.time()
                     self.error = None
+                    self.sink_input = None
                     self.process = subprocess.Popen(command, env=env)
+                    process = self.process
+                self._apply_volume(process, volume, attempts=20)
                 while self.process.poll() is None and not self.changed.wait(0.25):
                     pass
                 switched = self.changed.is_set()
@@ -187,6 +237,7 @@ class Player:
                         self.process.wait(timeout=3)
                 with self.lock:
                     self.process = None
+                    self.sink_input = None
                 if not switched:
                     self.next()
                     self.changed.clear()

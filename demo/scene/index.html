@@ -305,6 +305,11 @@
   async function configureChart(){
     try{
       const cfg=await fetch('/api/runtime-config').then(r=>r.json());
+      if(new URLSearchParams(location.search).has('operator-preview')){
+        const publicFeed=new URL(cfg.ohlc_ws_url);
+        publicFeed.hostname=location.hostname;
+        cfg.ohlc_ws_url=publicFeed.toString();
+      }
       const q=new URLSearchParams({
         mode:'live', sym:cfg.ohlc_symbol, tf:'1m,5m,15m,1h', stream:'1',
         ohlc_ws:cfg.ohlc_ws_url

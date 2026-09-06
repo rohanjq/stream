@@ -52,13 +52,14 @@ COPY music_catalog.json music_fetch.py /opt/app/
 RUN python3 /opt/app/music_fetch.py
 
 COPY scene /opt/app/scene
+COPY control /opt/app/control
 COPY charts /opt/app/charts
-COPY ai.py scene_server.py youtube_chat.py youtube_messages.json audience_commands.py audience_commands.json music_player.py start.sh /opt/app/
+COPY ai.py scene_server.py control_panel_server.py youtube_chat.py youtube_messages.json audience_commands.py audience_commands.json music_player.py start.sh /opt/app/
 RUN chmod +x /opt/app/start.sh && mkdir -p /var/lib/nightshift
 
 # Demo defaults (x264 CPU encode; no GPU in the podman VM)
 ENV WIDTH=1280 HEIGHT=720 FPS=30 VBITRATE=2500k \
-    RTMP_TARGET=rtmp://127.0.0.1:1935/live \
+    RTMP_TARGET=rtmp://127.0.0.1:1935/live OPERATOR_PORT=8082 \
     SCENE_PORT=8080 SCENE_BASE=http://127.0.0.1:8080 \
     STATE_DIR=/var/lib/nightshift \
     PIPER_BIN=/opt/piper/piper/piper \

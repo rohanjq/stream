@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Night Shift Operator</title>
+  <link rel="stylesheet" href="/styles.css?v=2">
+  <script defer src="/app.js?v=2"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail">
+      <a class="brand" href="#overview" aria-label="Night Shift Operator">
+        <span class="brand-signal" aria-hidden="true"></span>
+        <span><strong>Night Shift</strong><small>Operator</small></span>
+      </a>
+      <nav class="primary-nav" aria-label="Control areas">
+        <button class="nav-item active" data-view="overview"><span>01</span>Overview</button>
+        <button class="nav-item" data-view="scene"><span>02</span>Scene</button>
+        <button class="nav-item" data-view="broadcast"><span>03</span>Broadcast</button>
+        <button class="nav-item" data-view="voice"><span>04</span>Voice</button>
+        <button class="nav-item" data-view="youtube"><span>05</span>YouTube</button>
+        <button class="nav-item" data-view="audience"><span>06</span>Audience</button>
+        <button class="nav-item" data-view="music"><span>07</span>Music</button>
+        <button class="nav-item" data-view="activity"><span>08</span>Activity</button>
+        <button class="nav-item mobile-only" data-view="settings"><span>09</span>Settings</button>
+      </nav>
+      <div class="rail-foot">
+        <button class="nav-item" data-view="settings"><span>09</span>Settings</button>
+        <div class="rail-health"><i id="railHealthDot"></i><span id="railHealthText">Connecting</span></div>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="viewEyebrow">Live operations</p>
+          <h1 id="viewTitle">Overview</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="sync-state"><i id="syncDot"></i><span id="syncText">Connecting</span></span>
+          <time id="clock">--:--:--</time>
+          <button class="button quiet compact" id="refreshAll" type="button">Refresh</button>
+          <a class="button compact" id="openScene" href="http://127.0.0.1:8080/" target="_blank" rel="noreferrer">Open scene</a>
+        </div>
+      </header>
+
+      <main>
+        <section class="view active" id="view-overview" data-title="Overview" data-eyebrow="Live operations">
+          <div class="overview-layout">
+            <section class="preview-region">
+              <div class="section-heading">
+                <div><p class="eyebrow">Program output</p><h2>Live scene</h2></div>
+                <span class="live-flag"><i></i>Live</span>
+              </div>
+              <div class="preview-frame">
+                <iframe id="scenePreview" title="Live stream scene" loading="eager"></iframe>
+                <div class="preview-shade" id="previewShade"><span>Loading scene</span></div>
+              </div>
+              <div class="preview-meta">
+                <span id="previewLayout">Grid · 1m / 5m / 15m / 1h</span>
+                <span id="previewRevision">Revision --</span>
+              </div>
+            </section>
+
+            <aside class="operations-strip">
+              <div class="section-heading"><div><p class="eyebrow">Signal check</p><h2>Services</h2></div></div>
+              <div class="service-list">
+                <div class="service-row"><i id="sceneService"></i><span><strong>Scene engine</strong><small id="sceneServiceText">Checking</small></span></div>
+                <div class="service-row"><i id="musicService"></i><span><strong>Music engine</strong><small id="musicServiceText">Checking</small></span></div>
+                <div class="service-row"><i id="youtubeService"></i><span><strong>YouTube chat</strong><small id="youtubeServiceText">Checking</small></span></div>
+                <div class="service-row"><i id="ohlcService"></i><span><strong>Market feed</strong><small id="ohlcServiceText">Checking</small></span></div>
+              </div>
+              <div class="operator-note">
+                <p class="eyebrow">Speech queue</p>
+                <strong id="overviewSpeechState">Idle</strong>
+                <span id="overviewSpeechMeta">0 queued · 0 completed</span>
+              </div>
+            </aside>
+          </div>
+
+          <div class="metric-grid">
+            <article class="metric"><span>Messages received</span><strong id="metricReceived">0</strong><small>YouTube session</small></article>
+            <article class="metric"><span>Replies spoken</span><strong id="metricSpoken">0</strong><small>Character audio</small></article>
+            <article class="metric"><span>Commands executed</span><strong id="metricExecuted">0</strong><small>Audience controls</small></article>
+            <article class="metric"><span>Queue depth</span><strong id="metricQueued">0</strong><small>Speech + commands</small></article>
+          </div>
+
+          <div class="overview-bottom">
+            <section class="panel quick-panel">
+              <div class="section-heading"><div><p class="eyebrow">One touch</p><h2>Quick scene</h2></div></div>
+              <div class="quick-grid">
+                <button class="quick-action" data-quick-timeframe="1m"><strong>1m</strong><span>Scalp view</span></button>
+                <button class="quick-action" data-quick-timeframe="5m"><strong>5m</strong><span>Fast view</span></button>
+                <button class="quick-action" data-quick-timeframe="15m"><strong>15m</strong><span>Session view</span></button>
+                <button class="quick-action" data-quick-grid="1m,5m,15m,1h"><strong>4-up</strong><span>Full grid</span></button>
+              </div>
+            </section>
+            <section class="panel now-playing-panel">
+              <div class="section-heading"><div><p class="eyebrow">Audio bed</p><h2>Now playing</h2></div><span class="status-pill" id="overviewMusicMode">--</span></div>
+              <div class="track-summary">
+                <div class="album-mark" aria-hidden="true"><span></span></div>
+                <div><strong id="overviewTrack">Loading catalog</strong><span id="overviewArtist">--</span><small id="overviewCredit">--</small></div>
+              </div>
+              <div class="transport compact-transport">
+                <button type="button" data-music-action="previous" aria-label="Previous track">Prev</button>
+                <button class="transport-main" type="button" data-music-toggle>Play</button>
+                <button type="button" data-music-action="next" aria-label="Next track">Next</button>
+              </div>
+            </section>
+            <section class="panel feed-panel">
+              <div class="section-heading"><div><p class="eyebrow">Latest</p><h2>Conversation</h2></div><button class="text-button" data-go="activity">View all</button></div>
+              <div class="mini-feed" id="overviewMessages"><p class="empty-state">Waiting for messages</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-scene" data-title="Scene" data-eyebrow="Composition and overlays">
+          <div class="page-grid two-one">
+            <section class="panel scene-builder">
+              <div class="section-heading"><div><p class="eyebrow">Composition</p><h2>Chart layout</h2></div><span class="revision-label" id="sceneRevision">Revision --</span></div>
+              <div class="field-group">
+                <span class="field-label">Layout</span>
+                <div class="segmented" id="layoutMode">
+                  <button type="button" data-layout="single">Single chart</button>
+                  <button type="button" data-layout="grid">Multi-chart grid</button>
+                </div>
+              </div>
+              <div class="field-group" id="singleTimeframes">
+                <span class="field-label">Focus timeframe</span>
+                <div class="choice-row">
+                  <button type="button" data-scene-timeframe="1m">1m</button><button type="button" data-scene-timeframe="5m">5m</button>
+                  <button type="button" data-scene-timeframe="15m">15m</button><button type="button" data-scene-timeframe="30m">30m</button>
+                  <button type="button" data-scene-timeframe="1h">1h</button>
+                </div>
+              </div>
+              <div class="field-group" id="gridTimeframes">
+                <div class="field-label-line"><span class="field-label">Grid timeframes</span><small>Select up to four</small></div>
+                <div class="check-grid" id="gridChoices">
+                  <label><input type="checkbox" value="1m"><span>1 minute</span></label>
+                  <label><input type="checkbox" value="5m"><span>5 minutes</span></label>
+                  <label><input type="checkbox" value="15m"><span>15 minutes</span></label>
+                  <label><input type="checkbox" value="30m"><span>30 minutes</span></label>
+                  <label><input type="checkbox" value="1h"><span>1 hour</span></label>
+                </div>
+                <div class="preset-row">
+                  <button type="button" data-grid-preset="1m,5m,15m,1h">Four views</button>
+                  <button type="button" data-grid-preset="1m,5m">Fast pair</button>
+                  <button type="button" data-grid-preset="15m,1h">Wide pair</button>
+                </div>
+              </div>
+              <div class="form-footer"><span id="sceneSelectionSummary">No pending changes</span><button class="button primary" id="applyScene" type="button">Apply scene</button></div>
+            </section>
+
+            <aside class="panel next-announcement">
+              <div class="section-heading"><div><p class="eyebrow">On next change</p><h2>Announcement</h2></div><label class="switch"><input id="announceScene" type="checkbox"><span></span></label></div>
+              <label class="input-field"><span>Exact words <small>optional</small></span><textarea id="sceneAnnouncement" rows="4" maxlength="500" placeholder="Generated from the scene change"></textarea></label>
+              <label class="input-field"><span>Requested by</span><input id="sceneRequestedBy" maxlength="80" placeholder="Operator, viewer, sponsor"></label>
+              <label class="input-field"><span>Extra context</span><input id="sceneContext" maxlength="240" placeholder="Optional spoken context"></label>
+            </aside>
+
+            <section class="panel span-two">
+              <div class="section-heading"><div><p class="eyebrow">Technical analysis</p><h2>Chart overlays</h2></div><button class="text-button" id="disableOverlays" type="button">Clear all</button></div>
+              <div class="overlay-grid" id="overlayGrid"></div>
+            </section>
+
+            <section class="panel span-two scene-options">
+              <div><p class="eyebrow">Scene furniture</p><h2>Conversation panel</h2><p class="supporting" id="sidebarState">Currently hidden</p></div>
+              <label class="switch large"><input id="showSidebar" type="checkbox"><span></span></label>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-broadcast" data-title="Broadcast" data-eyebrow="Compositor overlays">
+          <div class="broadcast-status">
+            <div><span class="service-beacon" id="compositorBeacon"></span><span><small>Compositor</small><strong id="compositorStatus">Checking</strong></span></div>
+            <div><small>Last frame</small><strong id="compositorFrameAge">--</strong></div>
+            <div><small>Active overlay</small><strong id="compositorLayout">--</strong></div>
+            <div><small>Input</small><strong id="compositorInput">--</strong></div>
+          </div>
+
+          <section class="panel broadcast-mode-panel">
+            <div class="section-heading"><div><p class="eyebrow">Program layer</p><h2>Broadcast overlay</h2></div></div>
+            <div class="broadcast-modes" id="broadcastModes">
+              <button type="button" data-broadcast-layout="main"><strong>Clean</strong><span>Badge only</span></button>
+              <button type="button" data-broadcast-layout="logs"><strong>Updates</strong><span>Activity callouts</span></button>
+              <button type="button" data-broadcast-layout="poll"><strong>Poll</strong><span>Live audience vote</span></button>
+              <button type="button" data-broadcast-layout="leaderboard"><strong>Leaderboard</strong><span>Ranked community list</span></button>
+            </div>
+          </section>
+
+          <div class="page-grid even broadcast-tools">
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">Updates layer</p><h2>Add a callout</h2></div><span class="counter"><b id="broadcastLogCount">0</b>/180</span></div>
+              <textarea id="broadcastLog" maxlength="180" rows="4" placeholder="Type a short on-stream update"></textarea>
+              <div class="form-footer"><span>Retains the latest eight updates</span><button class="button" id="pushBroadcastLog" type="button">Add update</button></div>
+              <div class="log-preview" id="broadcastLogs"><p class="empty-state">No updates yet</p></div>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">Poll layer</p><h2>Create a poll</h2></div></div>
+              <label class="input-field"><span>Question</span><input id="pollQuestion" maxlength="100" placeholder="What should the room choose?"></label>
+              <label class="input-field"><span>Options <small>one per line</small></span><textarea id="pollOptions" rows="4" maxlength="300" placeholder="Option one&#10;Option two&#10;Option three"></textarea></label>
+              <div class="form-footer"><label class="checkbox-line"><input id="showPollAfterCreate" type="checkbox" checked><span>Show after creating</span></label><button class="button" id="createPoll" type="button">Create poll</button></div>
+              <div class="poll-preview" id="currentPoll"><p class="empty-state">No active poll</p></div>
+            </section>
+
+            <section class="panel span-two leaderboard-editor">
+              <div class="section-heading"><div><p class="eyebrow">Leaderboard layer</p><h2>Community ranking</h2></div><span>Up to eight entries</span></div>
+              <label class="input-field"><span>Entries <small>name: score, one per line</small></span><textarea id="leaderboardEntries" rows="6" maxlength="500" placeholder="Avery: 120&#10;Jordan: 95&#10;Kai: 80"></textarea></label>
+              <div class="form-footer"><label class="checkbox-line"><input id="showLeaderboardAfterSave" type="checkbox" checked><span>Show after saving</span></label><button class="button primary" id="saveLeaderboard" type="button">Update leaderboard</button></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-voice" data-title="Voice" data-eyebrow="Character and queue">
+          <div class="page-grid two-one">
+            <section class="panel voice-console">
+              <div class="section-heading"><div><p class="eyebrow">Character output</p><h2>Speak now</h2></div><span class="counter"><b id="voiceCount">0</b>/500</span></div>
+              <textarea class="large-compose" id="voiceText" maxlength="500" placeholder="Type the words the character should speak"></textarea>
+              <div class="voice-options">
+                <label class="input-field"><span>Priority</span><select id="voicePriority"><option value="normal">Normal</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
+                <label class="input-field"><span>Source label</span><input id="voiceSource" value="operator" maxlength="40"></label>
+                <label class="input-field"><span>Dedupe key <small>optional</small></span><input id="voiceDedupe" maxlength="160"></label>
+                <label class="input-field"><span>Cooldown seconds</span><input id="voiceCooldown" type="number" min="0" max="86400" value="0"></label>
+              </div>
+              <div class="form-footer"><label class="checkbox-line"><input id="voiceShowText" type="checkbox"><span>Show words in conversation</span></label><button class="button primary" id="speakNow" type="button">Queue speech</button></div>
+            </section>
+            <aside class="panel queue-panel">
+              <div class="section-heading"><div><p class="eyebrow">Coordinator</p><h2>Speech queue</h2></div><span class="status-pill" id="speechMode">Idle</span></div>
+              <div class="queue-number"><strong id="speechQueued">0</strong><span>waiting</span></div>
+              <dl class="detail-list">
+                <div><dt>Completed</dt><dd id="speechCompleted">0</dd></div>
+                <div><dt>Dropped</dt><dd id="speechDropped">0</dd></div>
+                <div><dt>Gap</dt><dd id="speechGap">--</dd></div>
+                <div><dt>Current source</dt><dd id="speechCurrent">None</dd></div>
+              </dl>
+            </aside>
+            <section class="panel span-two direct-question">
+              <div><p class="eyebrow">Conversation test</p><h2>Ask the host</h2></div>
+              <input id="askWho" maxlength="24" value="Operator" aria-label="Question author">
+              <input id="askText" maxlength="400" placeholder="Send a direct question to the host" aria-label="Question">
+              <button class="button" id="askHost" type="button">Ask</button>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-youtube" data-title="YouTube" data-eyebrow="Channel interaction">
+          <div class="page-grid even">
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">Inbound chat</p><h2>Reply policy</h2></div><span class="status-pill" id="youtubeConnection">Checking</span></div>
+              <label class="input-field"><span>Character response mode</span><select id="youtubeMode"><option value="off">Listen only</option><option value="selective">Selective replies</option><option value="all">Reply to all</option></select></label>
+              <label class="input-field"><span>Minimum time between replies</span><div class="unit-input"><input id="youtubeCooldown" type="number" min="0" max="3600" value="12"><span>seconds</span></div></label>
+              <div class="form-footer"><span id="youtubeLastError">No connection errors</span><button class="button primary" id="saveYoutubePolicy" type="button">Save policy</button></div>
+            </section>
+            <section class="panel youtube-stats">
+              <div class="section-heading"><div><p class="eyebrow">Session</p><h2>Channel telemetry</h2></div></div>
+              <div class="stat-pair"><div><strong id="ytReceived">0</strong><span>Received</span></div><div><strong id="ytSpoken">0</strong><span>Spoken</span></div><div><strong id="ytPublished">0</strong><span>Published</span></div><div><strong id="ytDropped">0</strong><span>Dropped</span></div></div>
+            </section>
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">Channel voice</p><h2>Publish template</h2></div></div>
+              <label class="input-field"><span>Message template</span><select id="youtubeTemplate"></select></label>
+              <div class="form-footer"><span>Posts as the authorized channel</span><button class="button" id="postTemplate" type="button">Publish template</button></div>
+            </section>
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">Channel voice</p><h2>Custom post</h2></div><span class="counter"><b id="youtubeMessageCount">0</b>/500</span></div>
+              <textarea id="youtubeMessage" maxlength="500" rows="5" placeholder="Write a channel message"></textarea>
+              <div class="form-footer"><span>Text only, no character audio</span><button class="button" id="postYoutubeMessage" type="button">Publish message</button></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-audience" data-title="Audience" data-eyebrow="Permissions and automation">
+          <div class="audience-summary">
+            <article><span>Considered</span><strong id="audienceConsidered">0</strong></article>
+            <article><span>Matched</span><strong id="audienceMatched">0</strong></article>
+            <article><span>Approved</span><strong id="audienceApproved">0</strong></article>
+            <article><span>Executed</span><strong id="audienceExecuted">0</strong></article>
+            <article><span>Denied</span><strong id="audienceDenied">0</strong></article>
+            <article><span>Failed</span><strong id="audienceFailed">0</strong></article>
+          </div>
+          <div class="section-heading page-heading"><div><p class="eyebrow">Command gates</p><h2>Audience permissions</h2></div><span id="audienceRouter">Router: --</span></div>
+          <div class="policy-list" id="audiencePolicies"><p class="empty-state">Loading policies</p></div>
+        </section>
+
+        <section class="view" id="view-music" data-title="Music" data-eyebrow="Playback and catalog">
+          <div class="music-layout">
+            <section class="now-playing-hero">
+              <div class="record-art" id="recordArt"><span></span></div>
+              <div class="track-copy"><p class="eyebrow">Now playing</p><h2 id="musicTrackTitle">Loading track</h2><p id="musicTrackArtist">--</p><small id="musicTrackCredit">--</small></div>
+              <div class="music-clock"><strong id="musicElapsed">00:00</strong><span id="musicPlaybackState">Checking</span></div>
+            </section>
+            <section class="music-controls">
+              <div class="transport">
+                <button type="button" data-music-action="previous">Previous</button>
+                <button class="transport-main" type="button" data-music-toggle>Play</button>
+                <button type="button" data-music-action="next">Next</button>
+              </div>
+              <label class="volume-control"><span>Volume</span><input id="musicVolume" type="range" min="0" max="1" step="0.01" value="0.35"><output id="musicVolumeOutput">35%</output></label>
+            </section>
+            <section class="catalog-region">
+              <div class="section-heading"><div><p class="eyebrow">Licensed library</p><h2>Track catalog</h2></div><input class="search-input" id="musicSearch" placeholder="Filter tracks" aria-label="Filter tracks"></div>
+              <div class="track-list" id="musicCatalog"><p class="empty-state">Loading catalog</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-activity" data-title="Activity" data-eyebrow="Messages and command audit">
+          <div class="activity-toolbar">
+            <div class="segmented" id="activityMode"><button class="active" type="button" data-activity="messages">Conversation</button><button type="button" data-activity="commands">Command audit</button></div>
+            <button class="button quiet compact" id="refreshActivity" type="button">Refresh</button>
+          </div>
+          <section class="activity-log active" id="activityMessages"><p class="empty-state">Waiting for messages</p></section>
+          <section class="activity-log" id="activityCommands"><p class="empty-state">No audience commands yet</p></section>
+        </section>
+
+        <section class="view" id="view-settings" data-title="Settings" data-eyebrow="Access and runtime">
+          <div class="page-grid even">
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">Authentication</p><h2>Control token</h2></div><span class="status-pill" id="tokenState">Not set</span></div>
+              <label class="input-field"><span>Bearer token</span><input id="controlToken" type="password" autocomplete="off" placeholder="CONTROL_TOKEN"></label>
+              <div class="form-footer"><span>Stored for this browser session</span><div class="button-row"><button class="button quiet" id="clearToken" type="button">Clear</button><button class="button primary" id="saveToken" type="button">Save token</button></div></div>
+            </section>
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">Market data</p><h2>Runtime feed</h2></div></div>
+              <dl class="detail-list roomy"><div><dt>Symbol</dt><dd id="runtimeSymbol">--</dd></div><div><dt>WebSocket</dt><dd id="runtimeWs">--</dd></div><div><dt>Scene URL</dt><dd id="runtimeScene">--</dd></div><div><dt>Console URL</dt><dd id="runtimeConsole">--</dd></div></dl>
+            </section>
+            <section class="panel span-two endpoint-panel">
+              <div class="section-heading"><div><p class="eyebrow">Control plane</p><h2>Endpoint status</h2></div></div>
+              <div class="endpoint-list" id="endpointList"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+</body>
+</html>

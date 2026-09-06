@@ -8,6 +8,7 @@ services:
       - ./demo/gstreamer/mediamtx.yml:/mediamtx.yml:ro
     ports:
       - "${STREAM_BIND_ADDRESS:-127.0.0.1}:8080:8080"
+      - "${STREAM_BIND_ADDRESS:-127.0.0.1}:${OPERATOR_HOST_PORT:-8082}:8082"
       - "${STREAM_BIND_ADDRESS:-127.0.0.1}:7800:7800"
       - "${STREAM_BIND_ADDRESS:-127.0.0.1}:8888:8888"
       - "${STREAM_BIND_ADDRESS:-127.0.0.1}:8889:8889"

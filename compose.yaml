@@ -29,8 +29,6 @@ services:
       SCENE_BASE: http://127.0.0.1:8080
     volumes:
       - stream-state:/var/lib/nightshift
-    extra_hosts:
-      - host.containers.internal:host-gateway
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
       interval: 20s

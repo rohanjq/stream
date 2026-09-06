@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 
 API_ROOT = "https://www.googleapis.com/youtube/v3"
@@ -131,6 +132,77 @@ class YouTubeClient:
         })
 
 
+class MockTokens:
+    configured = True
+
+    def get(self, force_refresh=False):
+        return "mock-token"
+
+
+class MockYouTubeClient:
+    def __init__(self, live_chat_id="mock-live-chat"):
+        self.tokens = MockTokens()
+        self.live_chat_id = live_chat_id
+        self._lock = threading.Lock()
+        self._items = []
+        self._sent = []
+
+    def active_live_chat_id(self):
+        return self.live_chat_id
+
+    def messages(self, _live_chat_id, page_token=None):
+        offset = int(page_token or 0)
+        with self._lock:
+            items = list(self._items[offset:])
+            next_token = str(len(self._items))
+        return {
+            "items": items,
+            "nextPageToken": next_token,
+            "pollingIntervalMillis": 250,
+        }
+
+    def send(self, _live_chat_id, text):
+        item = self._make_message("AI host", text, is_owner=True)
+        with self._lock:
+            self._sent.append(item)
+        return {"id": item["id"]}
+
+    def inject(self, text, author="Mock viewer", **flags):
+        item = self._make_message(author, text, **flags)
+        with self._lock:
+            self._items.append(item)
+        return item
+
+    def _make_message(self, author, text, is_owner=False, is_moderator=False,
+                      is_sponsor=False, event_type="textMessageEvent",
+                      amount_micros=0, purchase_amount="", tier=0):
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        item = {
+            "id": f"mock-{uuid.uuid4().hex}",
+            "snippet": {
+                "type": event_type,
+                "publishedAt": now,
+                "displayMessage": str(text),
+                "textMessageDetails": {"messageText": str(text)},
+            },
+            "authorDetails": {
+                "displayName": str(author)[:80],
+                "channelId": "mock-channel",
+                "isChatOwner": bool(is_owner),
+                "isChatModerator": bool(is_moderator),
+                "isChatSponsor": bool(is_sponsor),
+            },
+        }
+        if event_type == "superChatEvent":
+            item["snippet"]["superChatDetails"] = {
+                "userComment": str(text),
+                "amountMicros": int(amount_micros or 0),
+                "amountDisplayString": str(purchase_amount or ""),
+                "tier": int(tier or 0),
+            }
+        return item
+
+
 class YouTubeBridge:
     """Poll incoming chat and serialize explicit outbound channel messages."""
     def __init__(self, client, on_message, live_chat_id="", ignore_owner=True,
@@ -141,8 +213,8 @@ class YouTubeBridge:
         self._fixed_live_chat_id = bool(live_chat_id)
         self.ignore_owner = ignore_owner
         self.transport = (transport or CHAT_TRANSPORT).lower()
-        if self.transport not in ("grpc", "rest"):
-            raise ValueError("YouTube chat transport must be grpc or rest")
+        if self.transport not in ("grpc", "rest", "mock"):
+            raise ValueError("YouTube chat transport must be grpc, rest, or mock")
         self._stop = threading.Event()
         self._outbound = queue.Queue(maxsize=100)
         self._seen = set()
@@ -319,7 +391,7 @@ class YouTubeBridge:
                     is_new = self._remember(message_id)
                     # The first response is recent history. Record it without
                     # speaking so a restart cannot trigger a reply storm.
-                    if not is_new or not bootstrapped:
+                    if not is_new or (not bootstrapped and self.transport != "mock"):
                         continue
                     message = self._normalize(item)
                     if not message:
@@ -473,6 +545,11 @@ class YouTubeBridge:
 
 
 def bridge_from_env(on_message):
+    transport = CHAT_TRANSPORT
+    if transport == "mock":
+        return YouTubeBridge(MockYouTubeClient(), on_message,
+                             live_chat_id=os.environ.get("YOUTUBE_LIVE_CHAT_ID", "mock-live-chat"),
+                             ignore_owner=False, transport="mock")
     tokens = OAuthTokens(
         os.environ.get("YOUTUBE_CLIENT_ID", ""),
         os.environ.get("YOUTUBE_CLIENT_SECRET", ""),
@@ -483,4 +560,4 @@ def bridge_from_env(on_message):
     ignore_owner = os.environ.get("YOUTUBE_IGNORE_OWNER", "false").lower() not in ("0", "false", "no")
     return YouTubeBridge(YouTubeClient(tokens), on_message,
                          live_chat_id=os.environ.get("YOUTUBE_LIVE_CHAT_ID", ""),
-                         ignore_owner=ignore_owner)
+                         ignore_owner=ignore_owner, transport=transport)

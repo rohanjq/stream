@@ -1,8 +1,7 @@
 // Live/replay charting app.
-// - MODE 'live' (default): AllTick BTCUSDT. Backfill pulled fresh from the local
-//   server's rolling cache (/api/klines) on every load, then extended by the
-//   AllTick WebSocket tick stream. Switching timeframes rebuilds charts IN PLACE
-//   (no page reload) so the single WebSocket connection stays up — no reconnect.
+// - MODE 'live' (default): finalized history and live candle snapshots come
+//   directly from ohlcd. Switching timeframes updates subscriptions on the same
+//   WebSocket connection.
 // - MODE 'replay' (?mode=replay): gold Thursday, played back tick-by-tick.
 
 const CONFIG = {
@@ -12,7 +11,7 @@ const CONFIG = {
     { period: 50, varName: '--ema-50' }, { period: 200, varName: '--ema-200' },
   ],
   emasOn: false,
-  overlays: { marketStructure: true, keyLevels: true },
+  overlays: { marketStructure: false, keyLevels: false },
 };
 
 const TF_MAP = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600 };
@@ -21,7 +20,7 @@ const TF_MAP = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600 };
 CONFIG.panes.sort((a, b) => a.sec - b.sec);
 
 const MODE = (new URLSearchParams(location.search).get('mode') === 'replay') ? 'replay' : 'live'; // live is default
-const SYMBOL = new URLSearchParams(location.search).get('sym') || 'GOLD'; // AllTick live instrument (this token: GOLD / BTCUSDT)
+const SYMBOL = new URLSearchParams(location.search).get('sym') || (MODE === 'live' ? 'BTCUSDT' : 'GOLD');
 const TICKS_PER_BAR = 20;
 const SPEEDS = { Slow: 6000, Normal: 4000, Fast: 2000, Turbo: 1000 };
 const DAY = 86400;
@@ -34,7 +33,7 @@ const EMAS = CONFIG.emas;
 const $ = (id) => document.getElementById(id);
 const grid = $('grid');
 
-let DATA = MODE === 'live' ? {} : window.HIST;   // live: filled by loadData() from the server cache
+let DATA = MODE === 'live' ? {} : window.HIST;
 let panes = [];
 let replayStartTime = 0, replayEndTime = 0;
 let timer = null, running = false, tickCount = 0, lastStructTrend = null;
@@ -51,17 +50,21 @@ function seedEma(bars, period) {
   return out;
 }
 
+function visibleRange(barCount) {
+  // A single pane has substantially more horizontal room. Show a longer
+  // history there so candles are a little narrower; retain the larger candle
+  // bodies that make the four-pane broadcast view readable.
+  const single = CONFIG.panes.length === 1;
+  const history = single ? 90 : 60;
+  const future = single ? 6 : 8;
+  return { from: Math.max(0, barCount - history), to: barCount + future };
+}
+
 // ---- data loading ----
 async function loadData() {
   if (MODE !== 'live') { DATA = window.HIST; return; }
   const secs = [...new Set(CONFIG.panes.map((p) => p.sec))];
-  for (const sec of secs) {
-    try {
-      const arr = await (await fetch(`/api/klines?sec=${sec}&days=14`)).json();
-      if (Array.isArray(arr) && arr.length) { DATA[sec] = arr; continue; }
-    } catch (e) { /* fall through to static */ }
-    if (window.HIST_LIVE && window.HIST_LIVE[sec]) DATA[sec] = window.HIST_LIVE[sec];
-  }
+  for (const sec of secs) if (!DATA[sec]) DATA[sec] = [];
 }
 
 // ---- build all panes (teardown + rebuild; used on first load and every TF change) ----
@@ -83,7 +86,7 @@ function buildPanes() {
 
   panes = CONFIG.panes.map((cfg) => {
     const hist0 = DATA[cfg.sec];
-    if (!hist0 || !hist0.length) { console.warn('No data for', cfg.tf); return null; }
+    if (!hist0 || (MODE !== 'live' && !hist0.length)) { console.warn('No data for', cfg.tf); return null; }
     const cell = document.createElement('div'); cell.className = 'cell';
     const head = document.createElement('div'); head.className = 'cell-head';
     const legend = EMAS.map((e) => `<span class="li"><span class="dot" style="background:${css(e.varName)}"></span>${e.period}<b data-e="${e.period}"></b></span>`).join('');
@@ -92,7 +95,7 @@ function buildPanes() {
     cell.append(head, chartDiv); grid.appendChild(cell);
 
     const chart = LightweightCharts.createChart(chartDiv, {
-      layout: { background: { type: 'solid', color: css('--surface-1') }, textColor: css('--text-secondary'), fontFamily: 'system-ui, sans-serif', fontSize: n > 1 ? 10 : 12 },
+      layout: { background: { type: 'solid', color: css('--surface-1') }, textColor: css('--text-secondary'), fontFamily: 'DejaVu Sans, Liberation Sans, sans-serif', fontSize: n > 1 ? 10 : 12 },
       grid: { vertLines: { color: css('--gridline') }, horzLines: { color: css('--gridline') } },
       rightPriceScale: { borderColor: css('--baseline') },
       timeScale: { borderColor: css('--baseline'), timeVisible: true, secondsVisible: false },
@@ -111,12 +114,12 @@ function buildPanes() {
     }
     candle.setData(backfill);
     const k = EMAS.map((e) => 2 / (e.period + 1)); const prevEma = [], curEma = [];
-    emaSeries.forEach((s, i) => { const seeded = seedEma(backfill, EMAS[i].period); s.setData(seeded); prevEma[i] = seeded.length ? seeded[seeded.length - 1].value : backfill[backfill.length - 1].close; curEma[i] = prevEma[i]; });
-    const m = backfill.length; chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, m - 80), to: m + 30 });
+    emaSeries.forEach((s, i) => { const seeded = seedEma(backfill, EMAS[i].period); s.setData(seeded); prevEma[i] = seeded.length ? seeded[seeded.length - 1].value : (backfill.length ? backfill[backfill.length - 1].close : 0); curEma[i] = prevEma[i]; });
+    const m = backfill.length; chart.timeScale().setVisibleLogicalRange(visibleRange(m));
 
     const pane = {
       cfg, chart, candle, emaSeries, k, prevEma, curEma, el: chartDiv,
-      forming: null, bars: backfill.slice(), replay, rIdx: 0, tIdx: 0, path: null, lastPrice: backfill[backfill.length - 1].close,
+      forming: null, bars: backfill.slice(), replay, rIdx: 0, tIdx: 0, path: null, lastPrice: backfill.length ? backfill[backfill.length - 1].close : 0,
       realByTime: new Map(replay.map((b) => [b.time, b])), overlay: {},
       priceEl: head.querySelector('[data-price]'), trendEl: head.querySelector('[data-trend]'),
       emaEls: EMAS.map((e) => head.querySelector(`[data-e="${e.period}"]`)),
@@ -157,35 +160,6 @@ function setupCrosshairSync() {
 }
 
 async function rebuild() { await loadData(); buildPanes(); }
-
-// Re-sync each pane's CLOSED bars from the server cache. Fills any gap (e.g. after
-// a restart, when 30m/1h were stale) by merging in bars the pane is missing —
-// only rebuilds a pane when the server actually has newer closed bars, and never
-// touches the live forming bar. Reads the local /api/klines (no AllTick cost).
-async function resyncBackfill() {
-  if (MODE !== 'live') return;
-  for (const p of panes) {
-    let arr; try { arr = await (await fetch(`/api/klines?sec=${p.cfg.sec}&days=49`)).json(); } catch (e) { continue; }
-    if (!Array.isArray(arr) || !arr.length) continue;
-    const curBucket = p.forming ? p.forming.time : Infinity;
-    const existing = p.forming ? p.bars.slice(0, -1) : p.bars.slice();
-    const lastExisting = existing.length ? existing[existing.length - 1].time : 0;
-    const serverClosed = arr.filter((b) => b.time < curBucket);
-    const serverLast = serverClosed.length ? serverClosed[serverClosed.length - 1].time : 0;
-    if (serverLast <= lastExisting) continue;                 // no new closed bars -> leave the pane alone
-    const map = new Map(existing.map((b) => [b.time, b]));
-    for (const b of serverClosed) map.set(b.time, b);
-    const merged = [...map.values()].sort((a, b) => a.time - b.time);
-    p.candle.setData(merged);
-    p.emaSeries.forEach((s, i) => { const seeded = seedEma(merged, EMAS[i].period); s.setData(seeded); p.prevEma[i] = seeded.length ? seeded[seeded.length - 1].value : merged[merged.length - 1].close; });
-    p.bars = merged.slice();
-    if (p.forming) { p.bars.push(p.forming); p.candle.update(p.forming); }
-    if (typeof onBarClose === 'function') onBarClose(p, { css });
-    if (typeof onIndicatorBarClose === 'function') onIndicatorBarClose(p, { css });
-    updatePaneTrend(p);
-  }
-  updateStructBadge();
-}
 
 // ---- replay engine ----
 function buildPath(rb, n) {
@@ -247,20 +221,161 @@ function tick() {
 }
 
 // ---- live feed ----
-function feedTick(price, timeSec) {
-  if (!running) return;
-  for (const p of panes) aggregatePane(p, price, timeSec);
-  if (typeof updateTrades === 'function') updateTrades(price, timeSec);
-  updateStructBadge(); tickCount++; renderStatus();
+function chartBar(bar) {
+  if (!bar || !TF_MAP[bar.tf] || bar.symbol !== SYMBOL) return null;
+  const time = Math.floor(Date.parse(bar.open_time) / 1000);
+  const open = Number(bar.open), high = Number(bar.high), low = Number(bar.low), close = Number(bar.close);
+  if (![time, open, high, low, close].every(Number.isFinite) || high < low) return null;
+  return { time, open, high, low, close };
+}
+
+function resetLivePane(p, nextBars) {
+  p.bars = nextBars;
+  p.forming = null;
+  p.candle.setData(nextBars);
+  p.emaSeries.forEach((series, i) => {
+    const values = seedEma(nextBars, EMAS[i].period);
+    series.setData(values);
+    p.prevEma[i] = values.length ? values[values.length - 1].value : nextBars[nextBars.length - 1].close;
+    p.curEma[i] = p.prevEma[i];
+  });
+  const last = nextBars[nextBars.length - 1];
+  p.lastPrice = last.close;
+  p.priceEl.textContent = nf(last.close);
+  DATA[p.cfg.sec] = nextBars.slice();
+}
+
+function applySeed(message) {
+  const tf = (message.bars && message.bars[0] && message.bars[0].tf) || String(message.key || '').split('|')[1];
+  const p = panes.find((pane) => pane.cfg.tf === tf);
+  if (!p || !Array.isArray(message.bars)) return;
+  const byTime = new Map();
+  for (const raw of message.bars) {
+    const b = chartBar(raw);
+    if (b && raw.tf === tf && raw.closed === true) byTime.set(b.time, b);
+  }
+  const seeded = [...byTime.values()].sort((a, b) => a.time - b.time);
+  if (!seeded.length) return;
+  resetLivePane(p, seeded);
+  p.chart.timeScale().setVisibleLogicalRange(visibleRange(seeded.length));
+  updatePaneTrend(p);
+  renderStatus();
+}
+
+function applyLiveCandle(message) {
+  const raw = message.bar;
+  if ((message.type === 'forming' && raw && raw.closed !== false) ||
+      (message.type === 'closed' && raw && raw.closed !== true)) return;
+  const bar = chartBar(raw);
+  if (!bar) return;
+  const p = panes.find((pane) => pane.cfg.tf === raw.tf);
+  if (!p) return;
+
+  const last = p.bars[p.bars.length - 1];
+  if (last && bar.time < last.time) {
+    const byTime = new Map(p.bars.map((b) => [b.time, b]));
+    byTime.set(bar.time, bar);
+    resetLivePane(p, [...byTime.values()].sort((a, b) => a.time - b.time));
+  } else if (last && bar.time === last.time) {
+    Object.assign(last, bar);
+    p.candle.update(last);
+  } else {
+    p.bars.push(bar);
+    p.candle.update(bar);
+  }
+
+  if (message.type === 'forming') {
+    p.forming = p.bars[p.bars.length - 1];
+    for (let i = 0; i < EMAS.length; i++) {
+      p.curEma[i] = bar.close * p.k[i] + p.prevEma[i] * (1 - p.k[i]);
+      p.emaSeries[i].update({ time: bar.time, value: p.curEma[i] });
+    }
+  } else {
+    p.forming = null;
+    resetLivePane(p, p.bars);
+    if (typeof onBarClose === 'function') onBarClose(p, { css });
+    if (typeof onIndicatorBarClose === 'function') onIndicatorBarClose(p, { css });
+    updatePaneTrend(p);
+  }
+
+  p.lastPrice = bar.close;
+  p.priceEl.textContent = nf(bar.close);
+  for (let i = 0; i < EMAS.length; i++) p.emaEls[i].textContent = nf(p.curEma[i]);
+  if (typeof updateTrades === 'function') updateTrades(bar.close, bar.time);
+  updateStructBadge();
+  tickCount++;
+  renderStatus();
+}
+
+function feedMessage(message) {
+  if (message.type === 'seed') applySeed(message);
+  else applyLiveCandle(message);
 }
 function onFeedStatus(text, cls) { const el = $('status'); el.textContent = text; el.className = 'badge ' + (cls || 'live'); }
+
+const CONTROL_OVERLAYS = {
+  market_structure: () => CONFIG.overlays.marketStructure,
+  key_levels: () => CONFIG.overlays.keyLevels,
+  premium_discount: () => typeof INDI !== 'undefined' && INDI.premdisc,
+  fvg: () => typeof INDI !== 'undefined' && INDI.fvg,
+  order_blocks: () => typeof INDI !== 'undefined' && INDI.orderblocks,
+  patterns: () => typeof INDI !== 'undefined' && INDI.patterns,
+  liquidity: () => typeof INDI !== 'undefined' && INDI.liquidity,
+};
+
+function setControlledOverlay(name, enabled) {
+  if (name === 'market_structure') CONFIG.overlays.marketStructure = enabled;
+  else if (name === 'key_levels') CONFIG.overlays.keyLevels = enabled;
+  else if (typeof INDI !== 'undefined') {
+    if (name === 'premium_discount') INDI.premdisc = enabled;
+    else if (name === 'fvg') INDI.fvg = enabled;
+    else if (name === 'order_blocks') INDI.orderblocks = enabled;
+    else if (name === 'patterns') INDI.patterns = enabled;
+    else if (name === 'liquidity') INDI.liquidity = enabled;
+  }
+}
+
+async function applyStreamControl(state) {
+  if (MODE !== 'live' || !state) return;
+  const requested = (state.timeframes || []).filter((tf) => TF_MAP[tf]);
+  const next = state.layout === 'single' ? requested.slice(0, 1) : requested.slice(0, 4);
+  const current = CONFIG.panes.map((p) => p.tf);
+  const panesChanged = next.length && (next.length !== current.length || next.some((tf, i) => tf !== current[i]));
+
+  if (state.overlays) {
+    for (const [name, enabled] of Object.entries(state.overlays)) {
+      if (Object.prototype.hasOwnProperty.call(CONTROL_OVERLAYS, name)) setControlledOverlay(name, !!enabled);
+    }
+  }
+  if (panesChanged) {
+    // Preserve the latest seed/forming state before removing chart instances.
+    // Retained subscriptions do not emit a second seed, so the rebuilt pane
+    // must be hydrated from this client-side cache immediately.
+    for (const pane of panes) DATA[pane.cfg.sec] = pane.bars.map((bar) => ({ ...bar }));
+    CONFIG.panes = next.map((tf) => ({ tf, sec: TF_MAP[tf] })).sort((a, b) => a.sec - b.sec);
+    await rebuild();
+    if (feedHandle) feedHandle.setTimeframes(CONFIG.panes.map((p) => p.tf), false);
+    updateTfChips();
+  } else {
+    refreshOverlays();
+    refreshIndicators();
+  }
+}
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== location.origin || !event.data || event.data.type !== 'stream-control') return;
+  applyStreamControl(event.data.state).catch((e) => console.error('control update failed', e));
+});
 
 // ---- controls ----
 function start() {
   if (running) return; running = true; $('playpause').textContent = 'Pause';
   if (MODE === 'live') {
     $('status').textContent = 'LIVE'; $('status').className = 'badge live';
-    if (!feedStarted && typeof startLiveFeed === 'function') { feedStarted = true; feedHandle = startLiveFeed(SYMBOL, feedTick, onFeedStatus); }
+    if (!feedStarted && typeof startLiveFeed === 'function') {
+      feedStarted = true;
+      feedHandle = startLiveFeed(SYMBOL, CONFIG.panes.map((p) => p.tf), feedMessage, onFeedStatus);
+    }
   } else { timer = setInterval(tick, tickMs); $('status').textContent = 'REPLAY'; $('status').className = 'badge live'; }
 }
 function pause() { running = false; if (MODE !== 'live') clearInterval(timer); $('playpause').textContent = 'Resume'; $('status').textContent = 'PAUSED'; $('status').className = 'badge paused'; }
@@ -311,6 +426,7 @@ function buildHeader() {
       const u = new URL(location.href); u.searchParams.set('tf', sel.join(',')); history.replaceState(null, '', u); // no reload -> WS stays up
       updateTfChips();
       await rebuild();                       // rebuild charts in place
+      if (feedHandle) feedHandle.setTimeframes(sel, true); // fresh seed repairs the rebuilt panes
     });
     toggles.appendChild(b);
   });
@@ -352,7 +468,7 @@ function buildHeader() {
   });
 }
 
-// close the WS cleanly on navigation so AllTick frees the connection immediately
+// Close the OHLC WebSocket cleanly on navigation.
 window.addEventListener('pagehide', () => { if (feedHandle) try { feedHandle.stop(); } catch (e) {} });
 
 // ---- boot ----
@@ -362,5 +478,4 @@ window.addEventListener('pagehide', () => { if (feedHandle) try { feedHandle.sto
   await rebuild();
   setSpeed('Fast');
   start();
-  if (MODE === 'live') { [8000, 25000, 55000, 95000].forEach((ms) => setTimeout(resyncBackfill, ms)); setInterval(resyncBackfill, 60000); }
 })();

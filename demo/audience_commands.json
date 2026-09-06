@@ -1,0 +1,50 @@
+{
+  "chart.set_single": {
+    "enabled": true,
+    "auto_execute": true,
+    "roles": ["viewer", "sponsor", "superchat", "moderator", "owner"],
+    "require_superchat": false,
+    "min_superchat_micros": 0,
+    "global_cooldown_seconds": 0,
+    "user_cooldown_seconds": 0,
+    "default_duration_seconds": 0,
+    "max_duration_seconds": 600,
+    "announce_result": true
+  },
+  "chart.set_grid": {
+    "enabled": true,
+    "auto_execute": true,
+    "roles": ["sponsor", "superchat", "moderator", "owner"],
+    "require_superchat": false,
+    "min_superchat_micros": 0,
+    "global_cooldown_seconds": 0,
+    "user_cooldown_seconds": 0,
+    "default_duration_seconds": 0,
+    "max_duration_seconds": 600,
+    "announce_result": true
+  },
+  "music.next": {
+    "enabled": true,
+    "auto_execute": true,
+    "roles": ["viewer", "sponsor", "superchat", "moderator", "owner"],
+    "require_superchat": false,
+    "min_superchat_micros": 0,
+    "global_cooldown_seconds": 0,
+    "user_cooldown_seconds": 0,
+    "default_duration_seconds": 0,
+    "max_duration_seconds": 0,
+    "announce_result": true
+  },
+  "music.play": {
+    "enabled": true,
+    "auto_execute": true,
+    "roles": ["viewer", "sponsor", "superchat", "moderator", "owner"],
+    "require_superchat": false,
+    "min_superchat_micros": 0,
+    "global_cooldown_seconds": 0,
+    "user_cooldown_seconds": 0,
+    "default_duration_seconds": 0,
+    "max_duration_seconds": 0,
+    "announce_result": true
+  }
+}

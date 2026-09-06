@@ -1,17 +1,15 @@
-"""Cairo drawing helpers for the overlay panels — same visual layout/colors as
-the Smelter version's React components, so the two are a fair side-by-side.
-"""
+"""Cairo overlays for the dark, community-first midnight radio theme."""
 import cairo
 
 COLORS = {
-    "panel_bg": (0x0d / 255, 0x11 / 255, 0x17 / 255, 0.87),
-    "panel_border": (0x30 / 255, 0x36 / 255, 0x3d / 255, 1),
-    "fg": (0xe6 / 255, 0xed / 255, 0xf3 / 255, 1),
-    "mut": (0x7d / 255, 0x85 / 255, 0x90 / 255, 1),
-    "accent": (0x58 / 255, 0xa6 / 255, 0xff / 255, 1),
-    "ai": (0x3f / 255, 0xb9 / 255, 0x50 / 255, 1),
-    "gold": (0xe6 / 255, 0xc0 / 255, 0x4c / 255, 1),
-    "bar_bg": (0x21 / 255, 0x26 / 255, 0x2d / 255, 1),
+    "panel_bg": (0x12 / 255, 0x16 / 255, 0x25 / 255, 0.94),
+    "panel_border": (0x39 / 255, 0x42 / 255, 0x68 / 255, 1),
+    "fg": (0xf1 / 255, 0xee / 255, 0xf8 / 255, 1),
+    "mut": (0x92 / 255, 0x99 / 255, 0xb5 / 255, 1),
+    "accent": (0x73 / 255, 0xd9 / 255, 0xd0 / 255, 1),
+    "ai": (0xf1 / 255, 0x9a / 255, 0x75 / 255, 1),
+    "gold": (0xb7 / 255, 0x8c / 255, 0xff / 255, 1),
+    "bar_bg": (0x24 / 255, 0x2a / 255, 0x46 / 255, 1),
 }
 
 BAR_COLORS = [COLORS["accent"], COLORS["ai"], COLORS["gold"]]
@@ -31,12 +29,17 @@ def rounded_rect(ctx, x, y, w, h, r):
 
 
 def panel(ctx, x, y, w, h, title):
-    rounded_rect(ctx, x, y, w, h, 14)
+    rounded_rect(ctx, x, y, w, h, 18)
     rgba(ctx, COLORS["panel_bg"])
     ctx.fill_preserve()
     rgba(ctx, COLORS["panel_border"])
     ctx.set_line_width(1)
     ctx.stroke()
+
+    # Short multicolour signal bar makes every panel feel part of one room.
+    ctx.rectangle(x + 24, y, 58, 3)
+    rgba(ctx, COLORS["accent"])
+    ctx.fill()
 
     ctx.select_font_face("DejaVu Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
     ctx.set_font_size(22)
@@ -55,17 +58,21 @@ def text(ctx, x, y, s, size=15, color=COLORS["fg"], bold=False):
 
 
 def draw_badge(ctx, layout):
-    rounded_rect(ctx, 20, 20, 260, 40, 8)
-    rgba(ctx, (0x0d / 255, 0x11 / 255, 0x17 / 255, 0.8))
-    ctx.fill()
-    text(ctx, 32, 46, f"layout: {layout}", size=16, color=COLORS["ai"], bold=True)
+    rounded_rect(ctx, 20, 20, 280, 42, 18)
+    rgba(ctx, COLORS["panel_bg"])
+    ctx.fill_preserve()
+    rgba(ctx, COLORS["panel_border"])
+    ctx.set_line_width(1)
+    ctx.stroke()
+    text(ctx, 36, 47, f"NIGHT SHIFT  ·  {layout.upper()}", size=14,
+         color=COLORS["accent"], bold=True)
 
 
 def draw_logs(ctx, w, h, logs):
     px, py, pw, ph = w - 450, 30, 420, 340
-    panel(ctx, px, py, pw, ph, "Event Log")
+    panel(ctx, px, py, pw, ph, "WHAT'S HAPPENING")
     if not logs:
-        text(ctx, px + 18, py + 70, "Waiting for events…", size=16, color=COLORS["mut"])
+        text(ctx, px + 18, py + 70, "The room is listening…", size=16, color=COLORS["mut"])
         return
     y = py + 68
     for entry in logs:
@@ -101,7 +108,7 @@ def draw_poll(ctx, w, h, poll):
 
 def draw_leaderboard(ctx, w, h, entries):
     px, py, pw, ph = w - 450, 30, 420, 400
-    panel(ctx, px, py, pw, ph, "Leaderboard")
+    panel(ctx, px, py, pw, ph, "ROOM LEADERBOARD")
     if not entries:
         text(ctx, px + 18, py + 70, "No entries yet", size=16, color=COLORS["mut"])
         return

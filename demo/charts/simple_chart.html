@@ -1,0 +1,50 @@
+<!doctype html><html>
+<head>
+<meta charset="utf-8">
+<script src="/charts/vendor/lightweight-charts.js"></script>
+<style>
+  *{margin:0;padding:0} body{background:#131722;overflow:hidden}
+  #chart{position:absolute;top:0;left:0;width:100%;height:100%}
+</style>
+</head>
+<body><div id="chart"></div>
+<script>
+const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+  layout:{background:{type:"solid",color:"#131722"},textColor:"#d1d4dc"},
+  grid:{vertLines:{color:"#1e222d"},horzLines:{color:"#1e222d"}},
+  rightPriceScale:{borderColor:"#2a2e39"},
+  timeScale:{borderColor:"#2a2e39",timeVisible:true},
+  autoSize:true
+});
+const candles = chart.addCandlestickSeries({upColor:"#26a69a",downColor:"#ef5350",borderUpColor:"#26a69a",borderDownColor:"#ef5350",wickUpColor:"#26a69a",wickDownColor:"#ef5350"});
+
+const bars = [];
+const forming = {};
+
+function connect(){
+  const ws = new WebSocket("ws://10.88.0.1:18081/ws");
+  ws.onopen = ()=>{
+    ws.send(JSON.stringify({action:"subscribe",symbol:"BTCUSDTp",tf:"15m",seed_bars:500}));
+  };
+  ws.onmessage = (e)=>{
+    const m = JSON.parse(e.data);
+    if(m.type==="seed"){
+      for(const b of m.bars) bars.push({time:b.open_time/1000,open:b.open,high:b.high,low:b.low,close:b.close});
+      candles.setData(bars);
+    } else if(m.type==="forming"){
+      const b = m.bar;
+      const t = new Date(b.open_time).getTime()/1000;
+      forming[t] = {time:t,open:b.open,high:b.high,low:b.low,close:b.close};
+      candles.update({time:t,open:b.open,high:b.high,low:b.low,close:b.close});
+    } else if(m.type==="closed"){
+      const b = m.bar;
+      const t = new Date(b.open_time).getTime()/1000;
+      // finalize
+      candles.update({time:t,open:b.open,high:b.high,low:b.low,close:b.close});
+    }
+  };
+  ws.onclose = ()=> setTimeout(connect,2000);
+}
+connect();
+</script>
+</body></html>

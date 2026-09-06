@@ -1,0 +1,9 @@
+ai.env
+youtube.env
+token.json
+__pycache__
+tests
+*.png
+frame.png
+piperpkg
+smelter

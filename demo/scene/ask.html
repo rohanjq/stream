@@ -41,6 +41,7 @@
   let since = 0;
 
   function render(m){
+    if(m.kind === 'voice') return;
     const el = document.createElement('div');
     const cls = m.kind === 'ai' ? 'ai' : (m.who === window._me ? 'you' : 'viewer');
     el.className = 'msg ' + cls;

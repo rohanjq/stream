@@ -1,0 +1,68 @@
+name: nightshift
+
+services:
+  mediamtx:
+    image: docker.io/bluenviron/mediamtx:1.20.1
+    restart: unless-stopped
+    volumes:
+      - ./demo/gstreamer/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "${STREAM_BIND_ADDRESS:-127.0.0.1}:8080:8080"
+      - "${STREAM_BIND_ADDRESS:-127.0.0.1}:7800:7800"
+      - "${STREAM_BIND_ADDRESS:-127.0.0.1}:8888:8888"
+      - "${STREAM_BIND_ADDRESS:-127.0.0.1}:8889:8889"
+
+  app:
+    build:
+      context: ./demo
+      dockerfile: Containerfile
+    image: nightshift-app:local
+    restart: unless-stopped
+    network_mode: service:mediamtx
+    shm_size: 512m
+    cpus: ${APP_CPUS:-4.0}
+    env_file:
+      - ./config/stream.env
+      - ./.env
+    environment:
+      RTMP_TARGET: rtmp://127.0.0.1:1935/raw
+      SCENE_BASE: http://127.0.0.1:8080
+    volumes:
+      - stream-state:/var/lib/nightshift
+    extra_hosts:
+      - host.containers.internal:host-gateway
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    depends_on:
+      - mediamtx
+
+  compositor:
+    build:
+      context: ./demo/gstreamer
+      dockerfile: Containerfile
+    image: nightshift-gstreamer:local
+    restart: unless-stopped
+    network_mode: service:mediamtx
+    cpus: ${COMPOSITOR_CPUS:-2.0}
+    env_file:
+      - ./config/stream.env
+      - ./.env
+    environment:
+      INPUT_URL: rtmp://127.0.0.1:1935/raw
+      OUTPUT_URL: ${YOUTUBE_RTMP_URL:?set YOUTUBE_RTMP_URL in .env}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7800/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    depends_on:
+      - mediamtx
+      - app
+
+volumes:
+  stream-state:

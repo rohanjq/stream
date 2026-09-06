@@ -7,7 +7,7 @@
   <style>
     :root { color-scheme: light dark; }
     html, body { margin: 0; height: 100%; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--text-primary); display: flex; flex-direction: column; height: 100vh; }
+    body { font-family: "DejaVu Sans", "Liberation Sans", system-ui, sans-serif; background: var(--page); color: var(--text-primary); display: flex; flex-direction: column; height: 100vh; }
     .viz-root {
       color-scheme: light;
       --page:#f9f9f7; --surface-1:#fcfcfb; --text-primary:#0b0b0b; --text-secondary:#52514e;
@@ -19,19 +19,19 @@
     @media (prefers-color-scheme: dark) {
       :root:where(:not([data-theme="light"])) .viz-root {
         color-scheme: dark;
-        --page:#0c0e15; --surface-1:#131722; --text-primary:#d1d4dc; --text-secondary:#b2b5be;
-        --muted:#787b86; --gridline:#1e222d; --baseline:#2a2e39; --up:#26a69a; --down:#ef5350;
-        --ema-5:#2962ff; --ema-9:#ff9800; --ema-21:#e040fb; --ema-50:#00bcd4; --ema-200:#ffeb3b;
-        --level-res:#ef5350; --level-sup:#26a69a; --struct:#2962ff; --struct-bear:#ff9800;
+        --page:#090b13; --surface-1:#0d101b; --text-primary:#f1eef8; --text-secondary:#a9b0c8;
+        --muted:#737b98; --gridline:#202641; --baseline:#343c61; --up:#65d0ba; --down:#ff6f7d;
+        --ema-5:#73d9d0; --ema-9:#f19a75; --ema-21:#b78cff; --ema-50:#65a6ff; --ema-200:#f3c86a;
+        --level-res:#ff6f7d; --level-sup:#65d0ba; --struct:#b78cff; --struct-bear:#f19a75;
       }
     }
     /* explicit dark scope — applies regardless of OS setting (default theme) */
     :root[data-theme="dark"] .viz-root {
       color-scheme: dark;
-      --page:#0c0e15; --surface-1:#131722; --text-primary:#d1d4dc; --text-secondary:#b2b5be;
-      --muted:#787b86; --gridline:#1e222d; --baseline:#2a2e39; --up:#26a69a; --down:#ef5350;
-      --ema-5:#2962ff; --ema-9:#ff9800; --ema-21:#e040fb; --ema-50:#00bcd4; --ema-200:#ffeb3b;
-      --level-res:#ef5350; --level-sup:#26a69a; --struct:#2962ff; --struct-bear:#ff9800;
+      --page:#090b13; --surface-1:#0d101b; --text-primary:#f1eef8; --text-secondary:#a9b0c8;
+      --muted:#737b98; --gridline:#202641; --baseline:#343c61; --up:#65d0ba; --down:#ff6f7d;
+      --ema-5:#73d9d0; --ema-9:#f19a75; --ema-21:#b78cff; --ema-50:#65a6ff; --ema-200:#f3c86a;
+      --level-res:#ff6f7d; --level-sup:#65d0ba; --struct:#b78cff; --struct-bear:#f19a75;
     }
     header { padding: 10px 16px; border-bottom: 1px solid var(--gridline); background: var(--surface-1); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     h1 { font-size: 14px; margin: 0; font-weight: 600; }
@@ -88,13 +88,19 @@
     body.stream header { display: none !important; }
     body.stream #tradesPanel, body.stream #signalsPanel { display: none !important; }
     body.stream #grid { gap: 0; }
-    body.stream .cell-head { display: none !important; }
+    body.stream .cell { position: relative; }
+    body.stream .cell-head { display: block !important; position: absolute; z-index: 5;
+      top: 9px; left: 10px; padding: 0; border: 0; background: transparent; min-height: 0; }
+    body.stream .cell-head > :not(.tf) { display: none !important; }
+    body.stream .cell-head .tf { display: inline-block; color: #071614; background: rgba(115,217,208,.92);
+      border: 1px solid rgba(168,238,231,.55); border-radius: 11px; padding: 3px 8px;
+      font-size: 10px; line-height: 1; letter-spacing: .08em; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
   </style>
 </head>
 <body class="viz-root">
   <script>if (new URLSearchParams(location.search).get('stream') === '1') document.body.classList.add('stream');</script>
   <header>
-    <h1>GOLD (XAU)</h1>
+    <h1>BTC/USD (perpetual)</h1>
     <span id="status" class="badge live">REPLAY</span>
     <span id="structTrend" class="badge rng">STRUCTURE —</span>
     <span class="stat">bar <b id="elapsed">0/0</b></span>
@@ -124,11 +130,6 @@
   <div id="grid"></div>
 
   <script src="vendor/lightweight-charts.js"></script>
-  <script src="data_gold.js"></script>
-  <script src="data_live.js"></script>
-  <script src="overlays.js"></script>
-  <script src="indicators.js"></script>
-  <script src="trades.js"></script>
   <script src="feed.js"></script>
   <script src="chart.js"></script>
 </body>

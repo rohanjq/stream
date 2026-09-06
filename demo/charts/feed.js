@@ -1,58 +1,92 @@
-// AllTick live WebSocket feed (crypto "b" market).
-// Protocol (github.com/alltick/alltick-realtime-...-websocket-api):
-//   URL   : wss://quote.alltick.co/quote-b-ws-api?token=TOKEN
-//   sub   : cmd_id 22004  { data:{ symbol_list:[{code:"BTCUSDT"}] } }
-//   ping  : cmd_id 22000  {} every 10s (drop after 30s idle)
-//   tick  : cmd_id 22998  { data:{ code, tick_time, price, volume } }
-//
-// NOTE: the token below is client-visible. Fine for local backtesting; do not
-// deploy publicly or commit to a shared repo — rotate if leaked.
-const ALLTICK_TOKEN = process.env.ALLTICK_TOKEN || '';  // redacted for repo — supply your own AllTick token
-const ALLTICK_WS = 'wss://quote.alltick.co/quote-b-ws-api';
+// Canonical live candle feed from ohlcd. The server owns candle bucketing and
+// OHLC calculation; consumers only upsert the snapshots it sends.
+function startLiveFeed(symbol, timeframes, onMessage, onStatus) {
+  const params = new URLSearchParams(location.search);
+  const defaultUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:18081/ws`;
+  const wsUrl = params.get('ohlc_ws') || defaultUrl;
+  const seconds = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400 };
+  const validTimeframes = (items) => items.filter((tf) => seconds[tf]);
+  const seedBars = (tf) => Math.min(25000, Math.ceil((14 * 86400) / seconds[tf]));
+  const status = (text, cls) => { if (typeof onStatus === 'function') onStatus(text, cls); };
 
-// startLiveFeed(code, onTick(priceNumber, unixSeconds), onStatus(text, badgeClass))
-function startLiveFeed(code, onTick, onStatus) {
-  let ws, hb, seq = 1, retry = 0, alive = true;
-  const trace = () => `wf-${seq}-${(seq * 2654435761) % 1e9}`; // deterministic-ish unique string
-  const status = (t, c) => { if (typeof onStatus === 'function') onStatus(t, c); };
+  let wanted = new Set(validTimeframes(timeframes));
+  let subscribed = new Set();
+  let ws = null;
+  let alive = true;
+  let retry = 0;
+  let reconnectTimer = null;
 
-  function connect() {
-    status('CONNECTING…', 'paused');
-    try { ws = new WebSocket(`${ALLTICK_WS}?token=${encodeURIComponent(ALLTICK_TOKEN)}`); }
-    catch (e) { return scheduleReconnect(); }
+  function send(action, tf) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const request = { action, symbol, tf };
+    if (action === 'subscribe') request.seed_bars = seedBars(tf);
+    ws.send(JSON.stringify(request));
+  }
 
-    ws.onopen = () => {
-      retry = 0;
-      status('LIVE', 'live');
-      // subscribe to the transaction/tick stream
-      ws.send(JSON.stringify({ cmd_id: 22004, seq_id: seq++, trace: trace(), data: { symbol_list: [{ code }] } }));
-      // heartbeat every 10s (server drops after 30s idle)
-      clearInterval(hb);
-      hb = setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd_id: 22000, seq_id: seq++, trace: trace(), data: {} })); }, 10000);
-    };
-
-    ws.onmessage = (ev) => {
-      let m; try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.cmd_id === 22998 && m.data && m.data.price != null) {
-        const price = parseFloat(m.data.price);
-        // Bucket by the BROWSER clock (real "now"), not AllTick's tick_time — the
-        // exchange tick timestamps are offset from the kline timestamps, which would
-        // otherwise land ticks before the last backfill bar (chart looks frozen).
-        if (isFinite(price)) onTick(price, Math.floor(Date.now() / 1000));
+  function syncSubscriptions(refresh) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    for (const tf of [...subscribed]) {
+      if (refresh || !wanted.has(tf)) {
+        send('unsubscribe', tf);
+        subscribed.delete(tf);
       }
-      // 22001 = heartbeat ack, 22005 = sub ack — ignored.
-    };
-
-    ws.onclose = () => { clearInterval(hb); if (alive) scheduleReconnect(); };
-    ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+    for (const tf of wanted) {
+      if (!subscribed.has(tf)) {
+        send('subscribe', tf);
+        subscribed.add(tf);
+      }
+    }
   }
 
   function scheduleReconnect() {
-    retry++;
+    if (!alive || reconnectTimer) return;
+    retry += 1;
     status(`RECONNECT ${retry}…`, 'paused');
-    setTimeout(() => { if (alive) connect(); }, Math.min(15000, 1000 * retry));
+    const delay = Math.min(30000, 1000 * (2 ** Math.min(retry - 1, 5))) + Math.floor(Math.random() * 500);
+    reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
+  }
+
+  function connect() {
+    if (!alive) return;
+    status('CONNECTING…', 'paused');
+    try { ws = new WebSocket(wsUrl); } catch (e) { scheduleReconnect(); return; }
+
+    ws.onopen = () => {
+      retry = 0;
+      subscribed.clear();
+      status('LIVE', 'live');
+      syncSubscriptions(false);
+    };
+
+    ws.onmessage = ({ data }) => {
+      let message;
+      try { message = JSON.parse(data); } catch (e) { return; }
+      if (message.type === 'error') {
+        status(`OHLC ERROR: ${message.error || 'subscription failed'}`, 'paused');
+        return;
+      }
+      if (message.type === 'seed' || message.type === 'forming' || message.type === 'closed') onMessage(message);
+    };
+
+    ws.onclose = () => {
+      subscribed.clear();
+      ws = null;
+      scheduleReconnect();
+    };
+    ws.onerror = () => { if (ws) try { ws.close(); } catch (e) {} };
   }
 
   connect();
-  return { stop() { alive = false; clearInterval(hb); if (ws) try { ws.close(); } catch {} } };
+  return {
+    setTimeframes(next, refresh = false) {
+      wanted = new Set(validTimeframes(next));
+      syncSubscriptions(refresh);
+    },
+    stop() {
+      alive = false;
+      clearTimeout(reconnectTimer);
+      if (ws) try { ws.close(); } catch (e) {}
+    },
+  };
 }

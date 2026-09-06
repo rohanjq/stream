@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
       gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav \
       python3 python3-gi gir1.2-gst-plugins-base-1.0 gir1.2-gstreamer-1.0 \
-      python3-gi-cairo fonts-dejavu-core \
+      python3-gi-cairo fonts-dejavu-core curl tini \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -24,4 +24,7 @@ ENV INPUT_URL=rtmp://127.0.0.1:1935/raw \
     DEC_THREADS=2 \
     PYTHONUNBUFFERED=1
 
+HEALTHCHECK --interval=20s --timeout=5s --start-period=90s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:7800/health || exit 1
+ENTRYPOINT ["/usr/bin/tini", "-g", "--"]
 CMD ["python3", "app.py"]

@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       xvfb \
       chromium \
       ffmpeg \
-      python3 \
+      python3 python3-pip \
       pulseaudio pulseaudio-utils \
       libgomp1 curl \
       fonts-dejavu-core fonts-liberation \
-      procps ca-certificates \
+      procps ca-certificates tini \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -29,17 +29,43 @@ RUN set -eux; \
     curl -fsSL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx" -o voices/en_US-amy-medium.onnx; \
     curl -fsSL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json" -o voices/en_US-amy-medium.onnx.json
 
+# Runtime Python dependencies. These are required, so fail the image build if
+# installation fails instead of producing a partially working image.
+RUN pip install --break-system-packages \
+    kokoro-onnx==0.6.1 soundfile==0.13.1 \
+    grpcio==1.74.0 grpcio-tools==1.74.0
+
+# Generate the official YouTube liveChatMessages.streamList client from the
+# documented protocol. Keeping the proto in source makes schema changes clear.
+COPY stream_list.proto /opt/app/
+RUN python3 -m grpc_tools.protoc -I/opt/app --python_out=/opt/app \
+    --grpc_python_out=/opt/app /opt/app/stream_list.proto
+
+# Kokoro TTS (high-quality, multi-voice, ~338MB ONNX model).
+RUN mkdir -p /opt/kokoro && cd /opt/kokoro && \
+    curl -fsSL "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.onnx" -o kokoro-v1.0.onnx && \
+    curl -fsSL "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin" -o voices-v1.0.bin
+
+# The catalog is the source of truth for playback and attribution. Fetch every
+# licensed track at build time so the live player never depends on the network.
+COPY music_catalog.json music_fetch.py /opt/app/
+RUN python3 /opt/app/music_fetch.py
+
 COPY scene /opt/app/scene
 COPY charts /opt/app/charts
-COPY ai.py scene_server.py chat_worker.py start.sh /opt/app/
-RUN chmod +x /opt/app/start.sh
+COPY ai.py scene_server.py youtube_chat.py youtube_messages.json audience_commands.py audience_commands.json music_player.py start.sh /opt/app/
+RUN chmod +x /opt/app/start.sh && mkdir -p /var/lib/nightshift
 
 # Demo defaults (x264 CPU encode; no GPU in the podman VM)
 ENV WIDTH=1280 HEIGHT=720 FPS=30 VBITRATE=2500k \
     RTMP_TARGET=rtmp://127.0.0.1:1935/live \
     SCENE_PORT=8080 SCENE_BASE=http://127.0.0.1:8080 \
+    STATE_DIR=/var/lib/nightshift \
     PIPER_BIN=/opt/piper/piper/piper \
     PIPER_VOICE=/opt/piper/voices/en_US-amy-medium.onnx
 
 WORKDIR /opt/app
+HEALTHCHECK --interval=20s --timeout=5s --start-period=90s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
+ENTRYPOINT ["/usr/bin/tini", "-g", "--"]
 CMD ["/opt/app/start.sh"]

@@ -93,36 +93,114 @@
     background:#0b0e13;border:1px solid var(--line);padding:6px 14px;border-radius:22px}
   #viewers .d{width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.4s infinite}
 </style>
+<style>
+  /* Midnight radio lounge: a warm community space with a live market window. */
+  :root{
+    --bg:#090b13;--bg2:#0e1220;--panel:#121625;--panel2:#191d30;
+    --line:#2b3150;--fg:#f1eef8;--mut:#9299b5;--accent:#73d9d0;
+    --ai:#f19a75;--gold:#f3c86a;--red:#ff6f7d;--up:#65d0ba;
+  }
+  html,body{font-family:'DejaVu Sans','Liberation Sans',system-ui,sans-serif;background:
+    radial-gradient(circle at 86% 12%,rgba(126,92,255,.14),transparent 28%),
+    radial-gradient(circle at 12% 82%,rgba(42,196,180,.09),transparent 32%),#090b13}
+  #app{position:relative}
+  #app:before{content:'';position:absolute;inset:0;pointer-events:none;opacity:.18;z-index:20;
+    background-image:radial-gradient(circle,rgba(255,255,255,.28) 1px,transparent 1px);
+    background-size:29px 29px;mask-image:linear-gradient(120deg,#000,transparent 42%)}
+  #ticker{height:52px;gap:16px;padding:0 17px;background:rgba(11,14,25,.94);
+    border-bottom:1px solid #343a5d;box-shadow:0 8px 28px rgba(0,0,0,.35);backdrop-filter:blur(12px)}
+  .tag{color:#0a1517;border:0;background:linear-gradient(135deg,#73d9d0,#a8eee7);
+    border-radius:18px;padding:7px 14px;font-size:12px;letter-spacing:.1em;box-shadow:0 0 22px rgba(115,217,208,.18)}
+  .tag .sq{background:#102124;border-radius:50%;width:7px;height:7px}
+  #liveTag{font-size:11px;letter-spacing:.14em;color:#dcd9ea}
+  #tickerScroll .run{font-size:14px;letter-spacing:.02em;color:#b9bfd5}
+  #tickerScroll .run b{color:#f19a75}
+  #main{gap:12px;padding:12px}
+  #chartWrap{border:1px solid #303656;border-radius:18px;background:#0d101b;
+    box-shadow:0 18px 45px rgba(0,0,0,.38),inset 0 1px rgba(255,255,255,.025)}
+  #chartBadge{top:14px;left:15px;gap:7px}
+  #chartBadge .sym{font-size:13px;letter-spacing:.04em;background:rgba(17,21,36,.88);color:#edf0fa;
+    border:1px solid #343b5f;padding:6px 11px;border-radius:14px}
+  #chartBadge .rep{font-size:10px;letter-spacing:.1em;color:#10211e;background:#73d9d0;
+    padding:6px 9px;border-radius:12px}
+  #side{width:328px;gap:12px}
+  .card{position:relative;background:linear-gradient(155deg,rgba(27,31,51,.98),rgba(15,18,31,.98));
+    border:1px solid #303758;border-radius:18px;box-shadow:0 16px 40px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.035)}
+  .card:before{content:'';position:absolute;width:54px;height:3px;top:0;left:24px;border-radius:0 0 4px 4px;
+    background:linear-gradient(90deg,#73d9d0,#9677ff,#f19a75);pointer-events:none}
+  #eventCard{padding:17px 17px 15px}
+  .card-h{font-size:10px;letter-spacing:.15em;color:#a9b0cb}
+  .card-h .flag{color:#73d9d0}
+  #countdown{font-family:'DejaVu Sans Mono',monospace;font-size:38px;color:#f1eef8;letter-spacing:3px;
+    margin:9px 0 3px;text-shadow:0 0 24px rgba(150,119,255,.24)}
+  #cdLabel{color:#9299b5;font-size:12px}
+  .stat{background:rgba(7,9,17,.55);border:1px solid #2b3150;border-radius:12px;padding:8px 9px}
+  .stat .k{font-size:9px;letter-spacing:.12em;color:#858da9}
+  .stat .v{font-size:15px}
+  #amaHead{padding:14px 16px 12px;border-bottom:1px solid #2d3351;background:transparent}
+  #amaHead .t{font-size:17px;font-weight:750;letter-spacing:-.01em}
+  #amaHead .s{font-size:9px;letter-spacing:.17em;color:#8991ac}
+  #stage{height:150px;background:
+    radial-gradient(circle at 50% 52%,rgba(150,119,255,.22),transparent 29%),
+    radial-gradient(circle at 50% 52%,rgba(115,217,208,.1),transparent 52%),#0d101c}
+  #stage:before{content:'◉';position:absolute;top:17px;width:90px;height:90px;border-radius:50%;
+    display:grid;place-items:center;font-size:46px;color:#f19a75;border:1px solid rgba(241,154,117,.38);
+    box-shadow:0 0 0 9px rgba(150,119,255,.06),0 0 35px rgba(241,154,117,.13)}
+  #stage:after{content:'VOICE IN THE ROOM';position:absolute;bottom:10px;color:#939bb9;font-size:9px;letter-spacing:.18em}
+  #charCanvas{display:none}
+  #botState{top:10px;right:12px;font-size:9px;letter-spacing:.1em;color:#73d9d0;
+    background:#101421;border:1px solid #35405e;border-radius:12px;padding:4px 9px}
+  #feed{padding:13px 14px;gap:8px}
+  .msg{font-size:14px;line-height:1.4;color:#dedfed}
+  .msg.viewer .name{color:#73d9d0}
+  .msg.ai{background:linear-gradient(90deg,rgba(241,154,117,.11),rgba(150,119,255,.06));
+    border-left:3px solid #f19a75;padding:8px 10px;border-radius:4px 12px 12px 4px}
+  .msg.ai .name{color:#ffae8c}
+  #brand{height:42px;background:rgba(10,13,23,.95);border-top:1px solid #303654;
+    color:#8f97b2;font-size:12px}
+  #brand .b{color:#f1eef8;background:linear-gradient(135deg,rgba(150,119,255,.2),rgba(115,217,208,.12));
+    border:1px solid #484f77;padding:6px 12px;border-radius:14px}
+  #musicNow{min-width:0;display:flex;align-items:center;gap:8px;flex:1;color:#d8dbea;white-space:nowrap;overflow:hidden}
+  #musicNow .note{color:#73d9d0;font-size:16px}#musicTitle{font-weight:750;overflow:hidden;text-overflow:ellipsis}
+  #musicCredit{color:#858da9;font-size:10px;letter-spacing:.03em;overflow:hidden;text-overflow:ellipsis}
+  #musicCount{color:#bba8ff;font:10px 'DejaVu Sans Mono',monospace}
+  #viewers{background:#111522;border:1px solid #303858;border-radius:16px}
+  /* Focus mode: keep the community/sidebar implementation available while
+     giving the four live chart panes the full broadcast canvas. */
+  #side{display:none}
+  body.show-side #side{display:flex}
+  #chartBadge{display:none}
+</style>
 </head>
 <body>
 <div id="app">
 
   <div id="ticker">
-    <div class="tag"><span class="sq"></span>AI BRIEF</div>
-    <div id="liveTag"><span class="dot"></span>LIVE</div>
+    <div class="tag"><span class="sq"></span>NIGHT SHIFT</div>
+    <div id="liveTag"><span class="dot"></span>ON AIR</div>
     <div id="tickerScroll"><span class="run" id="run"></span></div>
   </div>
 
   <div id="main">
     <div id="chartWrap">
-      <div id="chartBadge"><span class="sym">GOLD · XAU/USD</span><span class="rep">REPLAY</span></div>
-      <iframe id="chart" src="/charts/chart.html?mode=replay&tf=1m,5m,15m,1h&stream=1"></iframe>
+      <div id="chartBadge"><span class="sym">BTC/USD · MULTI-TIMEFRAME</span><span class="rep">LIVE</span></div>
+      <iframe id="chart" src="about:blank" title="Live multi-timeframe chart"></iframe>
     </div>
 
     <div id="side">
       <div class="card" id="eventCard">
-        <div class="card-h"><span>Market Event</span><span class="flag">■ US</span></div>
+        <div class="card-h"><span>Tonight in the Room</span><span class="flag">● OPEN</span></div>
         <div id="countdown">07:17:14</div>
-        <div id="cdLabel">Nonfarm Payrolls · release in</div>
+        <div id="cdLabel">Next community check-in</div>
         <div class="stats">
-          <div class="stat"><div class="k">FORECAST</div><div class="v" style="color:var(--gold)">55K</div></div>
-          <div class="stat"><div class="k">PREVIOUS</div><div class="v" style="color:var(--red)">-23K</div></div>
+          <div class="stat"><div class="k">TOPIC</div><div class="v" style="color:var(--accent)">BTC LIVE</div></div>
+          <div class="stat"><div class="k">VIBE</div><div class="v" style="color:var(--ai)">OPEN MIC</div></div>
         </div>
       </div>
 
       <div class="card" id="ama">
         <div id="amaHead">
-          <div class="t">Ask Me Anything</div><div class="s">CHAT · COMMENT · INTERACT</div>
+          <div class="t">The Lounge</div><div class="s">ASK · SHARE · STAY A WHILE</div>
         </div>
         <div id="stage">
           <div id="botState">idle</div>
@@ -134,10 +212,8 @@
   </div>
 
   <div id="brand">
-    <span class="b">CONTACT US</span>
-    <span class="m">✈ @yourhandle</span>
-    <span class="m">✉ contact@yourdomain.com</span>
-    <span class="m">◈ yourdomain.com</span>
+    <span class="b">AFTER HOURS LIVE</span>
+    <div id="musicNow"><span class="note">♫</span><span id="musicTitle">Loading music…</span><span id="musicCredit"></span><span id="musicCount"></span></div>
     <div id="viewers"><span class="d"></span><span id="vcount">942</span></div>
   </div>
 
@@ -145,10 +221,10 @@
 
 <script>
   const heads = [
-    "HIDDEN DANGER IN LEVERAGED GOLD ETFS LIKE UGL AND GLL",
-    "TEUCRIUM LAUNCHES TPMT, A NEW PHYSICAL GOLD ETF WITH A 0.24% FEE",
-    "GOLD HOLDS ABOVE KEY SUPPORT AS DOLLAR SOFTENS",
-    "TRADERS EYE NONFARM PAYROLLS FOR NEXT DIRECTIONAL CUE",
+    "WHAT ARE YOU WATCHING TONIGHT? DROP IT IN THE CHAT",
+    "MARKETS, IDEAS, MUSIC AND GOOD COMPANY — LIVE AFTER HOURS",
+    "NO PERFECT CALLS HERE · JUST BETTER QUESTIONS",
+    "PULL UP A CHAIR · THE ROOM IS OPEN",
   ];
   document.getElementById('run').innerHTML =
     heads.map(h => '<b>▸</b>' + h).join('<span class="sepdot">•</span>') + '<span class="sepdot">•</span>';
@@ -169,18 +245,21 @@
   function setReading(){ bs.textContent='reading chat…'; }
   function setMouth(v){ if(window.char) window.char.setMouth(v); }
 
-  // Play the reply audio IN the browser and drive the mouth from its live
-  // amplitude. The audio also goes out to PulseAudio -> ffmpeg, so the mouth
-  // (captured in video) and the voice (captured from pulse) share one timeline.
+  // Load a silent browser copy only for visual state/lipsync. The authoritative
+  // audible copy is serialized by scene_server and mixed through PulseAudio.
   function speakAndLipsync(url){
     if(!url){ return; }
     if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
     audioCtx.resume && audioCtx.resume();
     const a = new Audio(url);
     let src;
-    try { src = audioCtx.createMediaElementSource(a); } catch(e){ a.play(); return; }
+    try { src = audioCtx.createMediaElementSource(a); }
+    catch(e){ a.muted=true; a.play(); return; }
     const an = audioCtx.createAnalyser(); an.fftSize = 256;
-    src.connect(an); an.connect(audioCtx.destination);
+    // Server-side playback is the sole audible path into PulseAudio. Keep this
+    // browser copy silent and use it only to drive the character's mouth.
+    const silent = audioCtx.createGain(); silent.gain.value = 0;
+    src.connect(an); an.connect(silent); silent.connect(audioCtx.destination);
     const buf = new Uint8Array(an.fftSize);
     bs.textContent='speaking…';
     function frame(){
@@ -202,6 +281,10 @@
       const r = await fetch('/api/messages?since='+since);
       const d = await r.json(); since = d.last;
       for(const m of d.messages){
+        if(m.kind === 'voice'){
+          speakAndLipsync(m.audio_url);
+          continue;
+        }
         const el = document.createElement('div');
         el.className = 'msg ' + (m.kind === 'ai' ? 'ai' : 'viewer');
         el.innerHTML = '<span class="name"></span><span class="text"></span>';
@@ -215,11 +298,55 @@
     setTimeout(poll, 600);
   }
   poll();
+
+  // Runtime configuration is injected by the server so a cloned deployment
+  // never needs host-specific URLs baked into tracked HTML.
+  async function configureChart(){
+    try{
+      const cfg=await fetch('/api/runtime-config').then(r=>r.json());
+      const q=new URLSearchParams({
+        mode:'live', sym:cfg.ohlc_symbol, tf:'1m,5m,15m,1h', stream:'1',
+        ohlc_ws:cfg.ohlc_ws_url
+      });
+      document.getElementById('chart').src=`/charts/chart.html?${q}`;
+    }catch(e){ setTimeout(configureChart,2000); }
+  }
+  configureChart();
+
+  // Apply control-plane changes without navigating or reloading the stream.
+  let controlRevision = 0;
+  async function pollControl(){
+    try{
+      const r = await fetch('/api/control');
+      const state = await r.json();
+      if(state.revision !== controlRevision){
+        controlRevision = state.revision;
+        document.body.classList.toggle('show-side', !!state.show_sidebar);
+        document.getElementById('chart').contentWindow.postMessage({
+          type:'stream-control', state
+        }, location.origin);
+      }
+    }catch(e){}
+    setTimeout(pollControl, 750);
+  }
+  document.getElementById('chart').addEventListener('load',()=>{ controlRevision=0; });
+  pollControl();
+
+  async function pollMusic(){
+    try{
+      const state=await fetch('/api/music/status').then(r=>r.json());
+      if(!state.track) throw new Error('player unavailable');
+      document.getElementById('musicTitle').textContent=`${state.playing?'Now playing':'Paused'} · ${state.track.title} — ${state.track.artist}`;
+      document.getElementById('musicCredit').textContent=`${state.track.license} · incompetech.com`;
+      document.getElementById('musicCount').textContent=`${state.index+1}/${state.count}`;
+    }catch(e){document.getElementById('musicTitle').textContent='Music player reconnecting…'}
+    setTimeout(pollMusic,3000);
+  }
+  pollMusic();
 </script>
-<script type="module">
-  import { initChar } from '/char3d.js';
-  try { window.char = initChar(document.getElementById('charCanvas'), document.getElementById('botState')); }
-  catch(e){ console.error('char3d init failed', e); }
-</script>
+<!-- The VRM renderer is intentionally disabled on this CPU-only host. Chromium's
+     SwiftShader process consumed about three cores and starved PulseAudio,
+     producing choppy speech. The chat UI remains active; re-enable char3d.js
+     only when GPU acceleration or dedicated rendering capacity is available. -->
 </body>
 </html>

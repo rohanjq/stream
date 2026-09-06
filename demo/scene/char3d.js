@@ -33,7 +33,7 @@ export function initChar(canvas, statusEl) {
   // state, which stays smooth) cuts CPU demand substantially without this
   // canvas looking different to a viewer, and frees scheduling time for the
   // rest of the page (ticker animation) and the capture/encode process.
-  const RENDER_INTERVAL_MS = 1000 / 15;
+  const RENDER_INTERVAL_MS = 1000 / 10;
   let lastRenderTime = 0;
 
   const loader = new GLTFLoader();

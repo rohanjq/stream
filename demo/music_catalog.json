@@ -1,0 +1,62 @@
+[
+  {
+    "id": "local_forecast_elevator",
+    "title": "Local Forecast - Elevator",
+    "artist": "Kevin MacLeod",
+    "file": "/opt/audio/local_forecast_elevator.mp3",
+    "sha256": "8c46b44e65324bc339fbbc3e770611d671f6c74a40f3ec8dd50332c082b25cc9",
+    "download_url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Local%20Forecast%20-%20Elevator.mp3",
+    "source_url": "https://incompetech.com/music/royalty-free/music.html",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "credit": "Local Forecast - Elevator by Kevin MacLeod (incompetech.com), licensed CC BY 4.0"
+  },
+  {
+    "id": "carefree",
+    "title": "Carefree",
+    "artist": "Kevin MacLeod",
+    "file": "/opt/audio/carefree.mp3",
+    "sha256": "8433b770a630d9b1594fd484442c677907ece899a4d149954cd2e74fd733e311",
+    "download_url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Carefree.mp3",
+    "source_url": "https://incompetech.com/music/royalty-free/music.html",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "credit": "Carefree by Kevin MacLeod (incompetech.com), licensed CC BY 4.0"
+  },
+  {
+    "id": "dream_culture",
+    "title": "Dream Culture",
+    "artist": "Kevin MacLeod",
+    "file": "/opt/audio/dream_culture.mp3",
+    "sha256": "f12cbb52bd4b92bd6cf8a343645567c119627e9cbf98108a3eb6ac2cc275ee46",
+    "download_url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Dream%20Culture.mp3",
+    "source_url": "https://incompetech.com/music/royalty-free/music.html",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "credit": "Dream Culture by Kevin MacLeod (incompetech.com), licensed CC BY 4.0"
+  },
+  {
+    "id": "floating_cities",
+    "title": "Floating Cities",
+    "artist": "Kevin MacLeod",
+    "file": "/opt/audio/floating_cities.mp3",
+    "sha256": "e7365652410d1fbc8a14d87537855d625c1a5fa8b7de8c626f47c13256ef2ddd",
+    "download_url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Floating%20Cities.mp3",
+    "source_url": "https://incompetech.com/music/royalty-free/music.html",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "credit": "Floating Cities by Kevin MacLeod (incompetech.com), licensed CC BY 4.0"
+  },
+  {
+    "id": "lobby_time",
+    "title": "Lobby Time",
+    "artist": "Kevin MacLeod",
+    "file": "/opt/audio/lobby_time.mp3",
+    "sha256": "bc47dc1f1a0b1fe4ff631cee89ca3987b8f7b52f533d06233665d51300331beb",
+    "download_url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Lobby%20Time.mp3",
+    "source_url": "https://incompetech.com/music/royalty-free/music.html",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "credit": "Lobby Time by Kevin MacLeod (incompetech.com), licensed CC BY 4.0"
+  }
+]

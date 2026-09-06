@@ -1,0 +1,14 @@
+{
+  "welcome": {
+    "category": "help",
+    "text": "Welcome to the Night Shift. Ask a clear chart question in live chat and the host may answer it on stream."
+  },
+  "how_to_use": {
+    "category": "help",
+    "text": "Ask about the chart, request a timeframe, or choose the music with a message like ‘play Carefree’ or ‘next song’."
+  },
+  "risk_note": {
+    "category": "notice",
+    "text": "This stream is for education and entertainment, not financial advice. Always manage your own risk."
+  }
+}

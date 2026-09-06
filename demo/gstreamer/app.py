@@ -219,7 +219,15 @@ def run_once():
 
 
 def main():
-    server = control.start(CONTROL_PORT)
+    def health():
+        age = max(0.0, time.monotonic() - _last_draw["t"])
+        return {
+            "status": "ok" if age <= STALL_TIMEOUT_S else "stalled",
+            "last_frame_age_seconds": round(age, 2),
+            "input": INPUT_URL,
+        }
+
+    server = control.start(CONTROL_PORT, health)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     start_ffmpeg_bridge()
     start_ffmpeg_egress()

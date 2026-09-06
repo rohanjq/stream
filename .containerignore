@@ -1,0 +1,10 @@
+.git
+.github
+.env
+demo/ai.env
+demo/youtube.env
+demo/token.json
+token.json
+runtime
+**/__pycache__
+*.pyc

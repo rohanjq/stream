@@ -12,6 +12,7 @@ The root `compose.yaml` is the source of truth.
 | GStreamer compositor | Reads `/raw`, draws Cairo overlays, re-encodes video, passes AAC through | Watchdog exits on a stalled frame path; Compose restarts it |
 | External OHLC service | Historical snapshot and forming-candle WebSocket events | Chart reconnects; URL is configured in `config/stream.env` |
 | YouTube | gRPC live-chat input and RTMPS output | Chat backs off/reconnects; RTMP egress retries |
+| External mock chat | Local gRPC chat input, browser UI, and HTTP channel publishing | Runs outside Compose; app reconnects when it returns |
 
 All containers share MediaMTX's network namespace. The media path uses loopback
 and RTMP is not published on the host. Scene, control, and preview ports bind to
@@ -75,6 +76,7 @@ The chart source and symbol come from `/api/runtime-config`, populated by
 | `demo/youtube_chat.py` | Official YouTube gRPC consumer/outbound messages |
 | `demo/audience_commands.py` | Extensible command policy/router |
 | `demo/music_player.py` | Single-owner playlist and loopback API |
+| `mock/mock_youtube_chat.py` | External gRPC/HTTP YouTube chat simulator |
 | `demo/gstreamer/app.py` | Pipeline, bridges, and watchdog |
 | `scripts/` | Doctor, deploy, status, logs, stop, and tests |
 
@@ -109,6 +111,38 @@ Never put a stream key in `config/stream.env`, Compose YAML, shell history, or
 API logs. Credentials pasted into chat or a ticket should be rotated: replace
 the OAuth client secret, revoke/reissue the refresh token, and reset the
 YouTube stream key before production.
+
+## Operator console
+
+The dedicated console at `http://127.0.0.1:8082/` is the primary operations
+surface. It is served by `demo/control_panel_server.py`, which keeps the browser
+on one origin and proxies scene requests under `/api/*` and compositor requests
+under `/compositor-api/*`.
+
+| View | Main operations |
+|---|---|
+| Overview | Program preview, authoritative service health, quick scenes, current music, recent conversation |
+| Scene | Single/grid layouts, 1m/5m/15m/1h selection, optional announce-first changes, indicators, conversation panel |
+| Broadcast | Program overlay, update callouts, polls, votes, and leaderboard |
+| Voice | Immediate speech, queue state, and conversation-response testing |
+| YouTube | Reply mode/cooldown, connection telemetry, template posts, and custom channel posts |
+| Audience | Per-command enablement, roles, execution, paid-message, cooldown, duration, and announcement policy |
+| Music | Current track, pause/resume, previous/next, volume, searchable licensed catalog |
+| Activity | Viewer/host conversation and operational message history |
+| Settings | Control token, runtime OHLC values, and endpoint-level status |
+
+The console polls all control-plane services, but the global connection badge
+uses `/api/health` as its authoritative signal. A successful `/panel-config`
+response alone cannot report the stream as online. The embedded scene preview
+uses a browser-reachable OHLC URL while the actual scene keeps its configured
+container URL.
+
+When bound only to localhost, `OPERATOR_TRUST_LOCAL=true` allows the proxy to
+inject `CONTROL_TOKEN` server-side. The token is never embedded in downloaded
+JavaScript. When the console is exposed beyond localhost, disable trusted-local
+access and enter the token in Settings; it is retained only in that browser tab
+session. Keep `STREAM_BIND_ADDRESS=127.0.0.1` unless a firewall or authenticated
+reverse proxy protects the service.
 
 ## HTTP APIs
 
@@ -150,6 +184,44 @@ bearer token. Without a token, writes are limited to loopback.
 reconnects with jittered exponential backoff. `RESOURCE_EXHAUSTED` receives a
 minimum 60-second delay. Outbound messages are de-duplicated by ID.
 
+Production inbound and outbound paths are deliberately separate:
+
+```text
+YouTube streamList gRPC -> normalize -> identity filter -> reply/command policy
+operator publish queue -> YouTube Data API using dedicated Google OAuth account
+```
+
+Leave `YOUTUBE_PUBLISH_URL` empty in production. The configured OAuth identity
+must have permission to post to the target live chat. The message ID returned
+by YouTube is remembered for exact duplicate suppression. Owner suppression and
+the production channel-ID allowlist provide the identity-level guard that keeps
+operator templates and custom posts out of viewer processing.
+
+Set `YOUTUBE_IGNORE_OWNER=true` to prevent channel-owner posts from entering
+the reply and command pipeline. For restricted participation, set
+`YOUTUBE_ALLOWED_CHANNEL_IDS` to a comma-separated list of immutable YouTube
+channel IDs. `YOUTUBE_ALLOWED_AUTHORS` provides case-insensitive display-name
+matching for local mocks only; display names are mutable and spoofable, so do
+not use them as a production authorization boundary. When both allowlists are
+empty, all non-ignored chat identities are processed.
+
+Local mock mode changes only the endpoints, not the application pipeline:
+
+```env
+YOUTUBE_CHAT_TRANSPORT=grpc
+YOUTUBE_GRPC_TARGET=host.containers.internal:18082
+YOUTUBE_GRPC_INSECURE=true
+YOUTUBE_LIVE_CHAT_ID=mock-live-chat
+YOUTUBE_PUBLISH_URL=http://host.containers.internal:18083/api/channel-messages
+YOUTUBE_IGNORE_OWNER=true
+YOUTUBE_ALLOWED_AUTHORS=Mock Viewer
+```
+
+The mock marks operator posts as channel-owned. They remain visible in mock
+history but owner suppression prevents AI review and command execution. A
+different mock username is also visible but ignored while the author allowlist
+above is active. See [mock/README.md](mock/README.md) for the full workflow.
+
 The command layer is separate from transport. Each tool has policy for enabled
 state, permissions, cooldown, paid-message requirements, and maximum frequency.
 Cooldowns are zero for current testing. Before a public launch, configure
@@ -175,6 +247,12 @@ The expected sink is `ytsink`; music owns one FFmpeg sink input, with a second
 temporary input only while speech plays. The browser's synthesized-audio copy
 is for lipsync and remains muted to avoid echo.
 
+Music selection, playback state, and volume persist in `stream-state`. Volume
+updates locate the active FFmpeg sink input by process ID and call `pactl`
+without setting the player's restart event, so the current track continues from
+the same position. Lookup and update attempts share one four-second deadline,
+which remains below the scene API's five-second music request timeout.
+
 ## Recovery and maintenance
 
 - Each FFmpeg connection retries after three seconds.
@@ -183,6 +261,9 @@ is for lipsync and remains muted to avoid echo.
   providing a clean FIFO recovery boundary.
 - Control and music settings survive recreation via the named volume.
 - `make deploy` rebuilds/recreates without removing that volume.
+- The external mock retains 200 messages. Its continuation cursor remains
+  monotonic when old entries are trimmed, so connected readers do not freeze at
+  the retention boundary.
 
 For an upgrade: run tests, deploy, watch logs, verify health, verify HLS, and
 then verify YouTube Studio. Keep the broadcast private until audio/video remain
@@ -197,3 +278,18 @@ stable for several minutes.
 - The bundled Zscaler certificate is development-network-specific.
 - This repository has no declared software license; choose one before public
   redistribution.
+
+## Validation
+
+Run the tracked application suite and the mock-specific rollover test:
+
+```bash
+./scripts/test.sh
+uv run --with grpcio==1.74.0 --with grpcio-tools==1.74.0 \
+  python -m unittest mock/test_mock_youtube_chat.py
+```
+
+The application suite covers console proxy authorization, music controls,
+YouTube normalization/publishing/identity policy, command routing, and scene
+behavior. The mock test covers continuation after the 200-message retention
+window rolls over.

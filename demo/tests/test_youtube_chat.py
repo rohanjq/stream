@@ -1,4 +1,6 @@
 import os
+import io
+import json
 import sys
 import time
 import unittest
@@ -8,7 +10,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import ai
-from youtube_chat import OAuthTokens, YouTubeBridge
+from youtube_chat import OAuthTokens, YouTubeBridge, YouTubeClient
 
 
 class FakeTokens:
@@ -78,9 +80,28 @@ class YouTubeBridgeTests(unittest.TestCase):
         self.assertEqual(message["text"], "please show 5m")
         self.assertEqual(message["purchase_amount"], "$5.00")
 
+    def test_identity_allowlist_filters_before_message_processing(self):
+        bridge = YouTubeBridge(
+            FakeClient(), lambda _message: None,
+            allowed_channel_ids=["trusted-channel"],
+            allowed_authors=["Local Tester"])
+        base = {"snippet": {"type": "textMessageEvent",
+                            "displayMessage": "next song"}}
+        rejected = {**base, "id": "1", "authorDetails": {
+            "displayName": "Untrusted", "channelId": "other-channel"}}
+        allowed_by_id = {**base, "id": "2", "authorDetails": {
+            "displayName": "Renamed", "channelId": "trusted-channel"}}
+        allowed_by_name = {**base, "id": "3", "authorDetails": {
+            "displayName": "local tester", "channelId": "local-mock"}}
+
+        self.assertIsNone(bridge._normalize(rejected))
+        self.assertEqual(bridge._normalize(allowed_by_id)["id"], "2")
+        self.assertEqual(bridge._normalize(allowed_by_name)["id"], "3")
+
     def test_grpc_message_is_normalized_for_existing_command_pipeline(self):
         bridge = YouTubeBridge(FakeClient(), lambda _message: None,
-                               transport="grpc", ignore_owner=False)
+                               transport="grpc", ignore_owner=False,
+                               allowed_channel_ids=["channel"])
         item = SimpleNamespace(
             id="g1",
             snippet=SimpleNamespace(
@@ -97,6 +118,8 @@ class YouTubeBridgeTests(unittest.TestCase):
         message = bridge._normalize_grpc(item)
         self.assertEqual(message["id"], "g1")
         self.assertEqual(message["text"], "play Carefree")
+        item.author_details.channel_id = "untrusted-channel"
+        self.assertIsNone(bridge._normalize_grpc(item))
 
     def test_outbound_is_explicit_and_length_limited(self):
         bridge = YouTubeBridge(FakeClient(), lambda _message: None,
@@ -105,6 +128,19 @@ class YouTubeBridgeTests(unittest.TestCase):
         self.assertEqual(item["category"], "help")
         with self.assertRaises(ValueError):
             bridge.publish("x" * 201)
+
+    def test_mock_publisher_posts_text_and_returns_message(self):
+        response = io.BytesIO(json.dumps({
+            "accepted": True, "message": {"id": "mock-channel-1"},
+        }).encode())
+        client = YouTubeClient(OAuthTokens("", "", ""),
+                               publish_url="http://mock/api/channel-messages")
+        with mock.patch("youtube_chat.urllib.request.urlopen",
+                        return_value=response) as urlopen:
+            message = client.send("ignored-in-mock-mode", "Channel update")
+        request = urlopen.call_args.args[0]
+        self.assertEqual(json.loads(request.data), {"text": "Channel update"})
+        self.assertEqual(message["id"], "mock-channel-1")
 
 class ReplySelectionTests(unittest.TestCase):
     def test_offline_selector_skips_chatter_and_answers_questions(self):

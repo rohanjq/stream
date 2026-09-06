@@ -153,15 +153,15 @@ class Player:
             process = self.process
             self._persist_locked()
         if process and process.poll() is None:
-            self._apply_volume(process, value, attempts=3)
+            self._apply_volume(process, value, attempts=3, timeout=4)
         return self.status()
 
-    def _sink_input_for_pid(self, process_id):
+    def _sink_input_for_pid(self, process_id, timeout=3):
         try:
             result = subprocess.run(
                 ["pactl", "list", "sink-inputs"], env={
                     **os.environ, "PULSE_SERVER": PULSE_SERVER,
-                }, capture_output=True, text=True, timeout=3, check=True)
+                }, capture_output=True, text=True, timeout=timeout, check=True)
         except (OSError, subprocess.SubprocessError):
             return None
         current = None
@@ -177,18 +177,25 @@ class Player:
                 return current
         return None
 
-    def _apply_volume(self, process, volume, attempts=1):
+    def _apply_volume(self, process, volume, attempts=1, timeout=4):
+        deadline = time.monotonic() + timeout
         for attempt in range(attempts):
             if process.poll() is not None:
                 return False
-            sink_input = self._sink_input_for_pid(process.pid)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            sink_input = self._sink_input_for_pid(process.pid, timeout=remaining)
             if sink_input is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
                 try:
                     subprocess.run([
                         "pactl", "set-sink-input-volume", str(sink_input),
                         f"{volume * 100:.2f}%",
                     ], env={**os.environ, "PULSE_SERVER": PULSE_SERVER},
-                       capture_output=True, timeout=3, check=True)
+                       capture_output=True, timeout=remaining, check=True)
                     with self.lock:
                         if self.process is process:
                             self.sink_input = sink_input
@@ -196,7 +203,7 @@ class Player:
                 except (OSError, subprocess.SubprocessError):
                     return False
             if attempt + 1 < attempts:
-                time.sleep(0.05)
+                time.sleep(min(0.05, max(0, deadline - time.monotonic())))
         return False
 
     def run(self):

@@ -392,7 +392,8 @@ async function refresh(options = {}) {
   }
   state.lastSync = Date.now();
   renderAll();
-  renderConnection(successCount > 0);
+  const healthIndex = entries.findIndex(([key]) => key === "health");
+  renderConnection(results[healthIndex]?.status === "fulfilled");
   if (options.notify) toast(successCount === entries.length ? "Control data refreshed" : `Refreshed ${successCount} of ${entries.length} services`, successCount ? "warning" : "error");
 }
 

@@ -43,7 +43,7 @@ class MusicPlayerTests(unittest.TestCase):
         self.player.process = process
         with mock.patch.object(self.player, "_apply_volume", return_value=True) as apply:
             state = self.player.set_volume(0.42)
-        apply.assert_called_once_with(process, 0.42, attempts=3)
+        apply.assert_called_once_with(process, 0.42, attempts=3, timeout=4)
         self.assertEqual(state["volume"], 0.42)
         self.assertFalse(self.player.changed.is_set())
 
@@ -58,6 +58,18 @@ Sink Input #9
         completed = mock.Mock(stdout=output)
         with mock.patch("music_player.subprocess.run", return_value=completed):
             self.assertEqual(self.player._sink_input_for_pid(222), 9)
+
+    def test_volume_update_uses_one_timeout_budget(self):
+        process = mock.Mock(pid=222)
+        process.poll.return_value = None
+        with mock.patch.object(self.player, "_sink_input_for_pid",
+                       return_value=9) as sink_lookup, \
+                mock.patch("music_player.subprocess.run") as run, \
+                mock.patch("music_player.time.monotonic", side_effect=[10, 11, 12]):
+            self.assertTrue(self.player._apply_volume(
+                process, 0.42, attempts=3, timeout=4))
+        self.assertEqual(sink_lookup.call_args.kwargs["timeout"], 3)
+        self.assertEqual(run.call_args.kwargs["timeout"], 2)
 
 
 if __name__ == "__main__":

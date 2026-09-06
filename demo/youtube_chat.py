@@ -23,6 +23,7 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 CHAT_TRANSPORT = os.environ.get("YOUTUBE_CHAT_TRANSPORT", "grpc").lower()
 GRPC_TARGET = os.environ.get("YOUTUBE_GRPC_TARGET", "youtube.googleapis.com:443")
 GRPC_INSECURE = os.environ.get("YOUTUBE_GRPC_INSECURE", "false").lower() in ("1", "true", "yes")
+PUBLISH_URL = os.environ.get("YOUTUBE_PUBLISH_URL", "").strip()
 
 
 class YouTubeError(RuntimeError):
@@ -73,9 +74,14 @@ class OAuthTokens:
 
 
 class YouTubeClient:
-    def __init__(self, tokens, api_root=API_ROOT):
+    def __init__(self, tokens, api_root=API_ROOT, publish_url=""):
         self.tokens = tokens
         self.api_root = api_root.rstrip("/")
+        self.publish_url = publish_url.strip()
+
+    @property
+    def can_publish(self):
+        return bool(self.publish_url or self.tokens.configured)
 
     def _request(self, method, resource, params=None, payload=None):
         query = urllib.parse.urlencode(params or {})
@@ -124,6 +130,23 @@ class YouTubeClient:
         return self._request("GET", "liveChat/messages", params)
 
     def send(self, live_chat_id, text):
+        if self.publish_url:
+            request = urllib.request.Request(
+                self.publish_url, data=json.dumps({"text": text}).encode(),
+                method="POST", headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                })
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    result = json.load(response)
+            except urllib.error.HTTPError as exc:
+                detail = exc.read(512).decode("utf-8", "replace")
+                raise YouTubeError(
+                    f"mock publish failed ({exc.code}): {detail}") from exc
+            except urllib.error.URLError as exc:
+                raise YouTubeError("mock publish endpoint is unavailable") from exc
+            return result.get("message", result)
         return self._request("POST", "liveChat/messages", {"part": "snippet"}, {
             "snippet": {
                 "liveChatId": live_chat_id,
@@ -136,12 +159,20 @@ class YouTubeClient:
 class YouTubeBridge:
     """Poll incoming chat and serialize explicit outbound channel messages."""
     def __init__(self, client, on_message, live_chat_id="", ignore_owner=True,
-                 transport=None):
+                 transport=None, allowed_channel_ids=None, allowed_authors=None):
         self.client = client
         self.on_message = on_message
         self.live_chat_id = live_chat_id
         self._fixed_live_chat_id = bool(live_chat_id)
         self.ignore_owner = ignore_owner
+        self.allowed_channel_ids = {
+            str(value).strip() for value in (allowed_channel_ids or [])
+            if str(value).strip()
+        }
+        self.allowed_authors = {
+            str(value).strip().casefold() for value in (allowed_authors or [])
+            if str(value).strip()
+        }
         self.transport = (transport or CHAT_TRANSPORT).lower()
         if self.transport not in ("grpc", "rest"):
             raise ValueError("YouTube chat transport must be grpc or rest")
@@ -152,7 +183,9 @@ class YouTubeBridge:
         self._seen_lock = threading.Lock()
         self._lock = threading.Lock()
         self._status = {
-            "configured": client.tokens.configured,
+            "configured": self._inbound_configured(),
+            "publish_configured": self._publishing_configured(),
+            "publish_target": "mock" if getattr(client, "publish_url", "") else "youtube",
             "connected": False,
             "live_chat_id": bool(live_chat_id),
             "last_error": None,
@@ -164,6 +197,7 @@ class YouTubeBridge:
             "transport": self.transport,
             "reconnects": 0,
             "continuations": 0,
+            "identity_filter": bool(self.allowed_channel_ids or self.allowed_authors),
         }
 
     def status(self):
@@ -178,18 +212,29 @@ class YouTubeBridge:
         with self._lock:
             self._status["spoken"] += 1
 
+    def _inbound_configured(self):
+        return bool(self.client.tokens.configured or (
+            self.transport == "grpc" and GRPC_INSECURE and self.live_chat_id))
+
+    def _publishing_configured(self):
+        return getattr(self.client, "can_publish", self.client.tokens.configured)
+
     def start(self):
-        if not self.client.tokens.configured:
+        inbound = self._inbound_configured()
+        outbound = self._publishing_configured()
+        if not inbound and not outbound:
             return False
-        threading.Thread(target=self._poll_loop, daemon=True,
-                         name="youtube-inbound").start()
-        threading.Thread(target=self._publish_loop, daemon=True,
-                         name="youtube-outbound").start()
+        if inbound:
+            threading.Thread(target=self._poll_loop, daemon=True,
+                             name="youtube-inbound").start()
+        if outbound:
+            threading.Thread(target=self._publish_loop, daemon=True,
+                             name="youtube-outbound").start()
         return True
 
     def publish(self, text, category="manual", source="api"):
-        if not self.client.tokens.configured:
-            raise YouTubeError("YouTube OAuth is not configured")
+        if not self._publishing_configured():
+            raise YouTubeError("YouTube publishing is not configured")
         text = " ".join(str(text).split()).strip()
         if not text:
             raise ValueError("message text is required")
@@ -214,6 +259,12 @@ class YouTubeBridge:
             self._seen_order.append(message_id)
             return True
 
+    def _identity_allowed(self, channel_id, author):
+        if not self.allowed_channel_ids and not self.allowed_authors:
+            return True
+        return (str(channel_id or "").strip() in self.allowed_channel_ids or
+                str(author or "").strip().casefold() in self.allowed_authors)
+
     def _normalize(self, item):
         snippet = item.get("snippet", {})
         author = item.get("authorDetails", {})
@@ -226,7 +277,9 @@ class YouTubeBridge:
             text = (details.get("userComment") or snippet.get("displayMessage") or "").strip()
         else:
             return None
-        if not text or (self.ignore_owner and author.get("isChatOwner")):
+        if (not text or (self.ignore_owner and author.get("isChatOwner")) or
+            not self._identity_allowed(author.get("channelId"),
+                           author.get("displayName"))):
             return None
         message = {
             "id": item.get("id", ""),
@@ -269,7 +322,9 @@ class YouTubeBridge:
                     snippet.display_message).strip()
         else:
             return None
-        if not text or (self.ignore_owner and author.is_chat_owner):
+        if (not text or (self.ignore_owner and author.is_chat_owner) or
+            not self._identity_allowed(author.channel_id,
+                           author.display_name)):
             return None
         message = {
             "id": item.id,
@@ -376,7 +431,10 @@ class YouTubeBridge:
                     self._set(connected=False, last_error="No active YouTube live chat")
                     self._stop.wait(30)
                     continue
-                token = self.client.tokens.get()
+                metadata = ()
+                if not insecure:
+                    token = self.client.tokens.get()
+                    metadata = (("authorization", f"Bearer {token}"),)
                 request = stream_list_pb2.LiveChatMessageListRequest(
                     live_chat_id=self.live_chat_id,
                     profile_image_size=88,
@@ -384,7 +442,7 @@ class YouTubeBridge:
                     part=["id", "snippet", "authorDetails"],
                 )
                 responses = stub.StreamList(
-                    request, metadata=(("authorization", f"Bearer {token}"),),
+                    request, metadata=metadata,
                     wait_for_ready=True)
                 got_response = False
                 for response in responses:
@@ -426,7 +484,7 @@ class YouTubeBridge:
                 self._set(connected=False,
                           last_error=f"YouTube gRPC {code.name}: {detail}"[:300],
                           reconnects=self.status()["reconnects"] + 1)
-                if code == grpc.StatusCode.UNAUTHENTICATED:
+                if code == grpc.StatusCode.UNAUTHENTICATED and self.client.tokens.configured:
                     try:
                         self.client.tokens.get(force_refresh=True)
                     except Exception:
@@ -491,7 +549,11 @@ def bridge_from_env(on_message):
         os.environ.get("YOUTUBE_ACCESS_TOKEN", ""),
         os.environ.get("YOUTUBE_TOKEN_EXPIRY", "0"),
     )
-    ignore_owner = os.environ.get("YOUTUBE_IGNORE_OWNER", "false").lower() not in ("0", "false", "no")
-    return YouTubeBridge(YouTubeClient(tokens), on_message,
+    ignore_owner = os.environ.get("YOUTUBE_IGNORE_OWNER", "true").lower() not in ("0", "false", "no")
+    allowed_channel_ids = os.environ.get("YOUTUBE_ALLOWED_CHANNEL_IDS", "").split(",")
+    allowed_authors = os.environ.get("YOUTUBE_ALLOWED_AUTHORS", "").split(",")
+    return YouTubeBridge(YouTubeClient(tokens, publish_url=PUBLISH_URL), on_message,
                          live_chat_id=os.environ.get("YOUTUBE_LIVE_CHAT_ID", ""),
-                         ignore_owner=ignore_owner, transport=transport)
+                         ignore_owner=ignore_owner, transport=transport,
+                         allowed_channel_ids=allowed_channel_ids,
+                         allowed_authors=allowed_authors)

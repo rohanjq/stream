@@ -36,6 +36,13 @@ Local endpoints (bound to `127.0.0.1` by default):
 - Scene health: `http://127.0.0.1:8080/api/health`
 - GStreamer health: `http://127.0.0.1:7800/health`
 
+The operator console is the primary day-to-day UI. Its views cover service
+health, scene layouts and timeframes, chart overlays, broadcast graphics,
+speech, YouTube reply policy and channel posts, audience-command permissions,
+music, activity history, and runtime settings. See
+[STREAM_DOCS.md](STREAM_DOCS.md#operator-console) for the complete control and
+authentication model.
+
 Set `STREAM_BIND_ADDRESS=0.0.0.0` in `.env` only behind a firewall/reverse
 proxy. Change `OPERATOR_HOST_PORT` if port 8082 is occupied. Write endpoints
 use `CONTROL_TOKEN`. The localhost-only console applies that token server-side;
@@ -67,6 +74,20 @@ music, and volume state.
 The older `demo/ai.env` and `demo/youtube.env` files remain ignored for the
 currently running legacy deployment, but new machines should use root `.env`.
 
+## Local YouTube mock
+
+The external mock provides the same gRPC inbound boundary used in production,
+plus an HTTP chat UI and an explicit channel-publish endpoint. It supports
+viewer messages, operator templates/custom posts, owner semantics, and bounded
+history without requiring Google OAuth. See [mock/README.md](mock/README.md) for
+setup, endpoints, identity filtering, and tests.
+
+Production must leave `YOUTUBE_PUBLISH_URL` empty. Outbound channel messages
+then use the dedicated Google account configured by the OAuth variables in
+`.env`. Restrict inbound processing with immutable
+`YOUTUBE_ALLOWED_CHANNEL_IDS`; display-name matching is intended only for local
+mock use.
+
 ## Architecture
 
 ```text
@@ -90,12 +111,19 @@ with MediaMTX and YouTube than GStreamer's RTMP plugins.
 
 See [STREAM_DOCS.md](STREAM_DOCS.md) for operations, APIs, failure recovery,
 audio details, secret rotation, and the full component map.
+See [CHANGELOG.md](CHANGELOG.md) for the dated summary of delivered changes.
 
 ## Important operational notes
 
 - The YouTube chat client uses the official persistent gRPC stream with
   continuation tokens and exponential reconnect backoff. It does not poll once
   per second.
+- Local mock mode can route operator channel posts to the external mock with
+  `YOUTUBE_PUBLISH_URL`; production leaves it empty and uses YouTube OAuth.
+- Owner posts are ignored by default. Optional channel-ID and local author
+  allowlists are applied before AI replies or audience commands.
+- Music volume changes update the running PulseAudio sink input in place, so
+  they do not restart the track; `pactl` work is bounded below the API timeout.
 - Speech from chat, indicators, operator actions, and Super Chats shares one
   priority queue. Only one utterance plays at a time, with a two-second gap.
 - Audience command cooldowns are currently zero in

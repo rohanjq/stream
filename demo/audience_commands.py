@@ -28,7 +28,9 @@ def parse_builtin(text):
             duration *= 60
 
     tf_match = TIMEFRAME.search(lower)
-    if tf_match and any(word in lower for word in ("chart", "view", "timeframe", "time frame")):
+    if tf_match and (
+            any(word in lower for word in ("chart", "view", "timeframe", "time frame")) or
+            re.search(r"\b(?:to|on|onto)\s+(?:the\s+)?(?:30m|15m|5m|1m|1h)\b", lower)):
         return {
             "tool": "chart.set_single",
             "arguments": {"timeframe": tf_match.group(1).lower(),

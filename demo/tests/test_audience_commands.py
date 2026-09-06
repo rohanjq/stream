@@ -26,6 +26,11 @@ class AudienceCommandTests(unittest.TestCase):
         self.assertEqual(proposal["tool"], "chart.set_single")
         self.assertEqual(proposal["arguments"]["timeframe"], "1m")
 
+    def test_short_switch_phrase_maps_to_chart_tool(self):
+        proposal = parse_builtin("switch to 1m")
+        self.assertEqual(proposal["tool"], "chart.set_single")
+        self.assertEqual(proposal["arguments"]["timeframe"], "1m")
+
     def test_market_statement_is_not_a_command(self):
         self.assertIsNone(parse_builtin("I trade the 1m chart most days"))
 

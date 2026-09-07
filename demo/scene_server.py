@@ -6,9 +6,13 @@ Endpoints:
   GET  /api/messages?since=N -> {"messages":[...], "last": <maxid>}
   POST /api/messages         -> append {who,text,kind}; returns {"id": <n>}
 """
-import itertools, json, os, queue, threading, time, subprocess, wave, urllib.request, urllib.error
+import base64, itertools, json, os, queue, threading, time, subprocess, wave, urllib.request, urllib.error
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+try:
+    import websocket
+except ImportError:  # Host-side unit tests do not install container dependencies.
+    websocket = None
 import ai
 import audience_commands
 import youtube_chat
@@ -100,6 +104,172 @@ AUDIENCE_RULES_PATH = os.path.join(os.path.dirname(__file__), "audience_commands
 MUSIC_API = os.environ.get("MUSIC_API", "http://127.0.0.1:8091").rstrip("/")
 OHLC_WS_URL = os.environ.get("OHLC_WS_URL", "ws://host.containers.internal:18081/ws")
 OHLC_SYMBOL = os.environ.get("OHLC_SYMBOL", "BTCUSDT")
+SIGNALD_WS_URL = os.environ.get(
+    "SIGNALD_WS_URL", "ws://host.containers.internal:8090/v1/ws")
+SIGNALD_API_TOKEN = os.environ.get("SIGNALD_API_TOKEN", "")
+DISPLAY_EMA_PERIODS = frozenset((50, 200))
+SIGNAL_TIMEFRAMES = ("1m", "5m", "15m", "1h")
+
+
+class SignalBridge:
+    """Keep a private Signals WebSocket and cache full EMA 50/200 history."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._points = {}
+        self._versions = {timeframe: 0 for timeframe in SIGNAL_TIMEFRAMES}
+        self._connected = set()
+
+    def start(self):
+        if websocket is None or not SIGNALD_API_TOKEN:
+            return False
+        for timeframe in SIGNAL_TIMEFRAMES:
+            threading.Thread(target=self._run, args=(timeframe,), daemon=True,
+                             name=f"signals-{timeframe}").start()
+        return True
+
+    def _apply(self, points_by_series, event):
+        data = event.get("data", {})
+        series = data.get("series", {})
+        analysis = data.get("analysis", {})
+        period = analysis.get("parameters", {}).get("period")
+        outputs = data.get("outputs", [])
+        output = next((item for item in outputs
+                       if item.get("name") == "value"
+                       and item.get("type") == "number"), None)
+        if (event.get("type") != "io.ytstack.signals.analysis.updated.v1"
+                or analysis.get("name") != "ema"
+                or period not in DISPLAY_EMA_PERIODS
+                or not data.get("ready") or output is None):
+            return False
+        try:
+            value = float(output["value"])
+            open_time = data["bar"]["open_time"]
+            revision = int(data.get("analysis_revision", 0))
+            status = data["bar"]["status"]
+            key = (series["symbol"], series["timeframe"], period)
+        except (KeyError, TypeError, ValueError):
+            return False
+        points = points_by_series.setdefault(key, {})
+        previous = points.get(open_time)
+        if previous and (previous["revision"] > revision or
+                (previous["revision"] == revision
+                 and previous["status"] == "confirmed"
+                 and status != "confirmed")):
+            return False
+        points[open_time] = {
+            "event": event, "revision": revision, "status": status}
+        if len(points) > 1000:
+            del points[sorted(points)[0]]
+        return True
+
+    def _consume(self, message):
+        data = message.get("data")
+        events = data if isinstance(data, list) else [data]
+        with self._lock:
+            changed_timeframes = set()
+            for event in events:
+                if isinstance(event, dict) and self._apply(self._points, event):
+                    timeframe = event.get("data", {}).get("series", {}).get("timeframe")
+                    if timeframe in self._versions:
+                        changed_timeframes.add(timeframe)
+            for timeframe in changed_timeframes:
+                self._versions[timeframe] += 1
+
+    @staticmethod
+    def _events(message):
+        data = message.get("data")
+        return data if isinstance(data, list) else [data]
+
+    def _run(self, timeframe):
+        protocol = "bearer." + base64.urlsafe_b64encode(
+            SIGNALD_API_TOKEN.encode()).decode().rstrip("=")
+        while True:
+            connection = None
+            replacement = {}
+            seeded = False
+            try:
+                connection = websocket.create_connection(
+                    SIGNALD_WS_URL, subprotocols=[protocol], timeout=15,
+                    suppress_origin=True)
+                connection.send(json.dumps({
+                    "protocol": "signals.v1",
+                    "type": "subscribe",
+                    "request_id": "nightshift-ema",
+                    "data": {
+                        "series": [
+                            {"dataset": "", "symbol": OHLC_SYMBOL,
+                             "timeframe": timeframe}
+                        ],
+                        "analyses": [{"name": "ema"}],
+                        "event_types": [
+                            "io.ytstack.signals.analysis.updated.v1"],
+                        "statuses": ["confirmed", "provisional"],
+                        "resume_after": "0",
+                        "history": {"limit": 1000},
+                    },
+                }))
+                connection.settimeout(90)
+                while True:
+                    message = json.loads(connection.recv())
+                    message_type = message.get("type")
+                    if message_type == "error":
+                        raise RuntimeError(message.get("error", "Signals protocol error"))
+                    if message_type in ("snapshot", "history"):
+                        for event in self._events(message):
+                            if isinstance(event, dict):
+                                self._apply(replacement, event)
+                        if message_type == "history":
+                            # Publish a complete replacement atomically. Old
+                            # higher revisions must not survive a Signals rebuild.
+                            with self._lock:
+                                for key in list(self._points):
+                                    if key[0] == OHLC_SYMBOL and key[1] == timeframe:
+                                        del self._points[key]
+                                self._points.update(replacement)
+                                self._versions[timeframe] += 1
+                                self._connected.add(timeframe)
+                            seeded = True
+                        continue
+                    if message_type == "event" and seeded:
+                        with self._lock:
+                            changed = False
+                            for event in self._events(message):
+                                if isinstance(event, dict) and self._apply(self._points, event):
+                                    changed = True
+                            if changed:
+                                self._versions[timeframe] += 1
+            except Exception as exc:
+                with self._lock:
+                    self._connected.discard(timeframe)
+                print(f"[signals:{timeframe}] connection ended: {exc}", flush=True)
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+            time.sleep(2)
+
+    def payload(self, symbol, timeframe, since):
+        with self._lock:
+            version = self._versions.get(timeframe, 0)
+            replace = since != version
+            if not replace:
+                events = []
+            else:
+                events = []
+                for period in DISPLAY_EMA_PERIODS:
+                    points = self._points.get((symbol, timeframe, period), {})
+                    events.extend(item["event"] for _, item in sorted(points.items()))
+            return {
+                "protocol": "signals.v1",
+                "type": "history",
+                "version": version,
+                "connected": timeframe in self._connected,
+                "replace": replace,
+                "data": events,
+            }
 
 
 def music_request(path, payload=None):
@@ -127,6 +297,7 @@ _lock = threading.Lock()
 _messages = []          # each: {id, who, text, kind, ts}
 _next_id = 1
 _youtube_bridge = None
+_signal_bridge = None
 _youtube_policy_lock = threading.Lock()
 _youtube_policy = {
     "speak_mode": YOUTUBE_SPEAK_MODE,
@@ -778,6 +949,21 @@ class Handler(BaseHTTPRequestHandler):
                 "ohlc_symbol": OHLC_SYMBOL,
             })
 
+        if parsed.path == "/api/signals/ema":
+            query = parse_qs(parsed.query)
+            symbol = query.get("symbol", [OHLC_SYMBOL])[0]
+            timeframe = query.get("timeframe", [""])[0]
+            if symbol != OHLC_SYMBOL or timeframe not in {
+                    "1m", "5m", "15m", "30m", "1h", "4h", "1d"}:
+                return self._json(400, {"error": "unsupported series"})
+            if not _signal_bridge:
+                return self._json(503, {"error": "Signals bridge unavailable"})
+            try:
+                since = int(query.get("since", ["-1"])[0])
+            except ValueError:
+                return self._json(400, {"error": "invalid version"})
+            return self._json(200, _signal_bridge.payload(symbol, timeframe, since))
+
         if parsed.path == "/api/control":
             return self._json(200, control_snapshot())
 
@@ -991,6 +1177,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    _signal_bridge = SignalBridge()
+    print(f"[signals] configured={_signal_bridge.start()}", flush=True)
     _youtube_bridge = youtube_chat.bridge_from_env(on_youtube_message)
     started = _youtube_bridge.start()
     print(f"[youtube] configured={_youtube_bridge.status()['configured']} "

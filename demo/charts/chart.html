@@ -12,7 +12,7 @@
       color-scheme: light;
       --page:#f9f9f7; --surface-1:#fcfcfb; --text-primary:#0b0b0b; --text-secondary:#52514e;
       --muted:#898781; --gridline:#e1e0d9; --baseline:#c3c2b7; --up:#0ca30c; --down:#d03b3b;
-      --ema-5:#2a78d6; --ema-9:#eb6834; --ema-21:#e87ba4; --ema-50:#4a3aa7; --ema-200:#eda100;
+      --ema-50:#4a3aa7; --ema-200:#eda100;
       --level-res:#d03b3b; --level-sup:#0ca30c; --struct:#4a3aa7; --struct-bear:#eb6834;
     }
     /* TradingView-style dark theme */
@@ -21,7 +21,7 @@
         color-scheme: dark;
         --page:#090b13; --surface-1:#0d101b; --text-primary:#f1eef8; --text-secondary:#a9b0c8;
         --muted:#737b98; --gridline:#202641; --baseline:#343c61; --up:#65d0ba; --down:#ff6f7d;
-        --ema-5:#73d9d0; --ema-9:#f19a75; --ema-21:#b78cff; --ema-50:#65a6ff; --ema-200:#f3c86a;
+        --ema-50:#65a6ff; --ema-200:#f3c86a;
         --level-res:#ff6f7d; --level-sup:#65d0ba; --struct:#b78cff; --struct-bear:#f19a75;
       }
     }
@@ -30,7 +30,7 @@
       color-scheme: dark;
       --page:#090b13; --surface-1:#0d101b; --text-primary:#f1eef8; --text-secondary:#a9b0c8;
       --muted:#737b98; --gridline:#202641; --baseline:#343c61; --up:#65d0ba; --down:#ff6f7d;
-      --ema-5:#73d9d0; --ema-9:#f19a75; --ema-21:#b78cff; --ema-50:#65a6ff; --ema-200:#f3c86a;
+      --ema-50:#65a6ff; --ema-200:#f3c86a;
       --level-res:#ff6f7d; --level-sup:#65d0ba; --struct:#b78cff; --struct-bear:#f19a75;
     }
     header { padding: 10px 16px; border-bottom: 1px solid var(--gridline); background: var(--surface-1); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -38,7 +38,7 @@
     .badge { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; }
     .badge.live { background: rgba(12,163,12,.15); color: var(--up); }
     .badge.paused { background: rgba(137,135,129,.2); color: var(--muted); }
-    .badge.done { background: rgba(42,120,214,.15); color: var(--ema-5); }
+    .badge.done { background: rgba(42,120,214,.15); color: var(--ema-50); }
     .badge.bull { background: rgba(12,163,12,.18); color: var(--up); }
     .badge.bear { background: rgba(208,59,59,.20); color: var(--down); }
     .badge.rng { background: rgba(137,135,129,.22); color: var(--muted); }
@@ -49,7 +49,7 @@
     .controls { display: flex; gap: 6px; margin-left: auto; align-items: center; }
     button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid var(--baseline); background: var(--surface-1); color: var(--text-primary); border-radius: 6px; cursor: pointer; }
     button:hover { border-color: var(--muted); }
-    .speed.active { background: var(--ema-5); color: #fff; border-color: var(--ema-5); }
+    .speed.active { background: var(--ema-50); color: #fff; border-color: var(--ema-50); }
     .sep { width: 1px; height: 20px; background: var(--gridline); margin: 0 4px; }
     #toggles { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; padding-top: 4px; }
     #toggles .grp-label { font-size: 11px; color: var(--muted); margin-right: 2px; text-transform: uppercase; letter-spacing: .04em; }
@@ -59,7 +59,7 @@
     .chip.on .dot { opacity: 1; }
     .trade.long { border-color: var(--level-sup); color: var(--level-sup); }
     .trade.short { border-color: var(--level-res); color: var(--level-res); }
-    .trade.armed { background: var(--ema-5); color: #fff; border-color: var(--ema-5); }
+    .trade.armed { background: var(--ema-50); color: #fff; border-color: var(--ema-50); }
     .tin { font-size: 11px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; }
     .tin input { width: 54px; font: inherit; font-size: 11px; padding: 3px 5px; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--baseline); border-radius: 5px; }
     #tradesPanel, #signalsPanel { position: fixed; bottom: 10px; width: 320px; max-height: 42vh; overflow: auto; background: var(--surface-1); border: 1px solid var(--gridline); border-radius: 8px; font-size: 11px; color: var(--text-secondary); z-index: 30; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
@@ -131,6 +131,7 @@
 
   <script src="vendor/lightweight-charts.js"></script>
   <script src="feed.js"></script>
+  <script src="signal-feed.js"></script>
   <script src="chart.js"></script>
 </body>
 </html>

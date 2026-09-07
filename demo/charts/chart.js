@@ -7,10 +7,8 @@
 const CONFIG = {
   panes: [{ tf: '5m', sec: 300 }],
   emas: [
-    { period: 5, varName: '--ema-5' }, { period: 9, varName: '--ema-9' }, { period: 21, varName: '--ema-21' },
     { period: 50, varName: '--ema-50' }, { period: 200, varName: '--ema-200' },
   ],
-  emasOn: false,
   overlays: { marketStructure: false, keyLevels: false },
 };
 
@@ -37,18 +35,7 @@ let DATA = MODE === 'live' ? {} : window.HIST;
 let panes = [];
 let replayStartTime = 0, replayEndTime = 0;
 let timer = null, running = false, tickCount = 0, lastStructTrend = null;
-let feedStarted = false, feedHandle = null;
-
-function seedEma(bars, period) {
-  const m = 2 / (period + 1); const out = []; let prev, sum = 0;
-  for (let i = 0; i < bars.length; i++) {
-    const c = bars[i].close;
-    if (i < period - 1) { sum += c; continue; }
-    if (i === period - 1) { sum += c; prev = sum / period; } else prev = c * m + prev * (1 - m);
-    out.push({ time: bars[i].time, value: prev });
-  }
-  return out;
-}
+let feedStarted = false, feedHandle = null, signalHandle = null;
 
 function visibleRange(barCount) {
   // A single pane has substantially more horizontal room. Show a longer
@@ -102,7 +89,7 @@ function buildPanes() {
       crosshair: { mode: LightweightCharts.CrosshairMode.Normal }, autoSize: true,
     });
     const candle = chart.addCandlestickSeries({ upColor: css('--up'), downColor: css('--down'), borderUpColor: css('--up'), borderDownColor: css('--down'), wickUpColor: css('--up'), wickDownColor: css('--down'), priceLineVisible: false });
-    const emaSeries = EMAS.map((e) => chart.addLineSeries({ color: css(e.varName), lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true, visible: CONFIG.emasOn }));
+    const emaSeries = EMAS.map((e) => chart.addLineSeries({ color: css(e.varName), lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true, visible: true }));
 
     const all = hist0;
     let backfill, replay;
@@ -113,19 +100,17 @@ function buildPanes() {
       backfill = all.slice(0, splitIdx); replay = all.slice(splitIdx, endIdx);
     }
     candle.setData(backfill);
-    const k = EMAS.map((e) => 2 / (e.period + 1)); const prevEma = [], curEma = [];
-    emaSeries.forEach((s, i) => { const seeded = seedEma(backfill, EMAS[i].period); s.setData(seeded); prevEma[i] = seeded.length ? seeded[seeded.length - 1].value : (backfill.length ? backfill[backfill.length - 1].close : 0); curEma[i] = prevEma[i]; });
+    emaSeries.forEach((series) => series.setData([]));
     const m = backfill.length; chart.timeScale().setVisibleLogicalRange(visibleRange(m));
 
     const pane = {
-      cfg, chart, candle, emaSeries, k, prevEma, curEma, el: chartDiv,
+      cfg, chart, candle, emaSeries, el: chartDiv,
       forming: null, bars: backfill.slice(), replay, rIdx: 0, tIdx: 0, path: null, lastPrice: backfill.length ? backfill[backfill.length - 1].close : 0,
       realByTime: new Map(replay.map((b) => [b.time, b])), overlay: {},
+      signalPoints: new Map(EMAS.map((e) => [e.period, new Map()])),
       priceEl: head.querySelector('[data-price]'), trendEl: head.querySelector('[data-trend]'),
       emaEls: EMAS.map((e) => head.querySelector(`[data-e="${e.period}"]`)),
     };
-    if (typeof initOverlays === 'function') initOverlays(pane, CONFIG.overlays, { css });
-    if (typeof initIndicators === 'function') initIndicators(pane, { css });
     return pane;
   }).filter(Boolean);
 
@@ -171,17 +156,15 @@ function buildPath(rb, n) {
 function startBar(p) { const rb = p.replay[p.rIdx]; p.forming = { time: rb.time, open: rb.open, high: rb.open, low: rb.open, close: rb.open }; p.bars.push(p.forming); p.path = buildPath(rb, TICKS_PER_BAR); p.tIdx = 0; }
 function finalizeBar(p) {
   const rb = p.replay[p.rIdx]; Object.assign(p.forming, { open: rb.open, high: rb.high, low: rb.low, close: rb.close }); p.candle.update(p.forming);
-  for (let i = 0; i < EMAS.length; i++) { p.curEma[i] = rb.close * p.k[i] + p.prevEma[i] * (1 - p.k[i]); p.emaSeries[i].update({ time: rb.time, value: p.curEma[i] }); p.prevEma[i] = p.curEma[i]; }
   p.rIdx++; p.forming = null;
-  if (typeof onBarClose === 'function') onBarClose(p, { css }); if (typeof onIndicatorBarClose === 'function') onIndicatorBarClose(p, { css }); updatePaneTrend(p); if (p === panes[0]) updateStructBadge();
+  updatePaneTrend(p); if (p === panes[0]) updateStructBadge();
 }
 function stepPane(p) {
   if (p.rIdx >= p.replay.length) return false;
   if (p.forming === null) startBar(p);
   const price = p.path[Math.min(p.tIdx, p.path.length - 1)]; const f = p.forming;
   f.close = price; if (price > f.high) f.high = price; if (price < f.low) f.low = price; p.candle.update(f);
-  for (let i = 0; i < EMAS.length; i++) { p.curEma[i] = price * p.k[i] + p.prevEma[i] * (1 - p.k[i]); p.emaSeries[i].update({ time: f.time, value: p.curEma[i] }); }
-  p.priceEl.textContent = nf(price); for (let i = 0; i < EMAS.length; i++) p.emaEls[i].textContent = nf(p.curEma[i]); p.lastPrice = price;
+  p.priceEl.textContent = nf(price); p.lastPrice = price;
   if (++p.tIdx >= TICKS_PER_BAR) finalizeBar(p);
   return true;
 }
@@ -200,15 +183,12 @@ function aggregatePane(p, price, driverTime) {
     }
   }
   const f = p.forming; f.close = price; if (price > f.high) f.high = price; if (price < f.low) f.low = price; p.candle.update(f);
-  for (let i = 0; i < EMAS.length; i++) { p.curEma[i] = price * p.k[i] + p.prevEma[i] * (1 - p.k[i]); p.emaSeries[i].update({ time: f.time, value: p.curEma[i] }); }
-  p.priceEl.textContent = nf(price); for (let i = 0; i < EMAS.length; i++) p.emaEls[i].textContent = nf(p.curEma[i]); p.lastPrice = price;
+  p.priceEl.textContent = nf(price); p.lastPrice = price;
 }
 function finalizeAgg(p) {
   if (!p.forming) return; const real = p.realByTime.get(p.forming.time);
   if (real) Object.assign(p.forming, { open: real.open, high: real.high, low: real.low, close: real.close }); p.candle.update(p.forming);
-  const c = real ? real.close : p.forming.close;
-  for (let i = 0; i < EMAS.length; i++) { p.curEma[i] = c * p.k[i] + p.prevEma[i] * (1 - p.k[i]); p.emaSeries[i].update({ time: p.forming.time, value: p.curEma[i] }); p.prevEma[i] = p.curEma[i]; }
-  p.forming = null; if (typeof onBarClose === 'function') onBarClose(p, { css }); updatePaneTrend(p);
+  p.forming = null; updatePaneTrend(p);
 }
 function tick() {
   const drv = panes[0];
@@ -233,12 +213,6 @@ function resetLivePane(p, nextBars) {
   p.bars = nextBars;
   p.forming = null;
   p.candle.setData(nextBars);
-  p.emaSeries.forEach((series, i) => {
-    const values = seedEma(nextBars, EMAS[i].period);
-    series.setData(values);
-    p.prevEma[i] = values.length ? values[values.length - 1].value : nextBars[nextBars.length - 1].close;
-    p.curEma[i] = p.prevEma[i];
-  });
   const last = nextBars[nextBars.length - 1];
   p.lastPrice = last.close;
   p.priceEl.textContent = nf(last.close);
@@ -286,21 +260,14 @@ function applyLiveCandle(message) {
 
   if (message.type === 'forming') {
     p.forming = p.bars[p.bars.length - 1];
-    for (let i = 0; i < EMAS.length; i++) {
-      p.curEma[i] = bar.close * p.k[i] + p.prevEma[i] * (1 - p.k[i]);
-      p.emaSeries[i].update({ time: bar.time, value: p.curEma[i] });
-    }
   } else {
     p.forming = null;
     resetLivePane(p, p.bars);
-    if (typeof onBarClose === 'function') onBarClose(p, { css });
-    if (typeof onIndicatorBarClose === 'function') onIndicatorBarClose(p, { css });
     updatePaneTrend(p);
   }
 
   p.lastPrice = bar.close;
   p.priceEl.textContent = nf(bar.close);
-  for (let i = 0; i < EMAS.length; i++) p.emaEls[i].textContent = nf(p.curEma[i]);
   if (typeof updateTrades === 'function') updateTrades(bar.close, bar.time);
   updateStructBadge();
   tickCount++;
@@ -310,6 +277,45 @@ function applyLiveCandle(message) {
 function feedMessage(message) {
   if (message.type === 'seed') applySeed(message);
   else applyLiveCandle(message);
+}
+
+function applySignalEvents(events, replace = false, replaceTimeframe = '') {
+  const touched = new Set();
+  if (replace) {
+    const pane = panes.find((item) => item.cfg.tf === replaceTimeframe);
+    if (pane) {
+      for (const ema of EMAS) {
+        pane.signalPoints.get(ema.period).clear();
+        touched.add(`${replaceTimeframe}:${ema.period}`);
+      }
+    }
+  }
+  for (const event of events) {
+    const data = event && event.data;
+    const period = Number(data && data.analysis && data.analysis.parameters && data.analysis.parameters.period);
+    const output = data && Array.isArray(data.outputs) && data.outputs.find((item) => item.name === 'value' && item.type === 'number');
+    const time = data && data.bar ? Math.floor(Date.parse(data.bar.open_time) / 1000) : NaN;
+    const pane = data && data.series ? panes.find((item) => item.cfg.tf === data.series.timeframe) : null;
+    if (!pane || !EMAS.some((ema) => ema.period === period) || !data.ready || !output ||
+        !Number.isFinite(time) || !Number.isFinite(Number(output.value))) continue;
+    const points = pane.signalPoints.get(period);
+    const revision = Number(data.analysis_revision) || 0;
+    const status = data.bar.status;
+    const previous = points.get(time);
+    if (previous && (previous.revision > revision ||
+        (previous.revision === revision && previous.status === 'confirmed' && status !== 'confirmed'))) continue;
+    points.set(time, { time, value: Number(output.value), revision, status });
+    touched.add(`${pane.cfg.tf}:${period}`);
+  }
+  for (const key of touched) {
+    const [tf, rawPeriod] = key.split(':');
+    const period = Number(rawPeriod);
+    const pane = panes.find((item) => item.cfg.tf === tf);
+    const index = EMAS.findIndex((ema) => ema.period === period);
+    const points = [...pane.signalPoints.get(period).values()].sort((a, b) => a.time - b.time);
+    pane.emaSeries[index].setData(points.map(({ time, value }) => ({ time, value })));
+    if (points.length) pane.emaEls[index].textContent = nf(points[points.length - 1].value);
+  }
 }
 function onFeedStatus(text, cls) { const el = $('status'); el.textContent = text; el.className = 'badge ' + (cls || 'live'); }
 
@@ -355,6 +361,7 @@ async function applyStreamControl(state) {
     CONFIG.panes = next.map((tf) => ({ tf, sec: TF_MAP[tf] })).sort((a, b) => a.sec - b.sec);
     await rebuild();
     if (feedHandle) feedHandle.setTimeframes(CONFIG.panes.map((p) => p.tf), false);
+    if (signalHandle) signalHandle.setTimeframes(CONFIG.panes.map((p) => p.tf));
     updateTfChips();
   } else {
     refreshOverlays();
@@ -431,9 +438,6 @@ function buildHeader() {
     toggles.appendChild(b);
   });
   toggles.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
-  const emaLbl = document.createElement('span'); emaLbl.className = 'grp-label'; emaLbl.textContent = 'EMA'; toggles.appendChild(emaLbl);
-  EMAS.forEach((e, i) => toggles.appendChild(chip(String(e.period), CONFIG.emasOn, css(e.varName), (on) => { panes.forEach((p) => p.emaSeries[i].applyOptions({ visible: on })); })));
-  toggles.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
   const ovLbl = document.createElement('span'); ovLbl.className = 'grp-label'; ovLbl.textContent = 'Overlays'; toggles.appendChild(ovLbl);
 
   // Unified control list so a master toggle can flip everything at once.
@@ -469,13 +473,20 @@ function buildHeader() {
 }
 
 // Close the OHLC WebSocket cleanly on navigation.
-window.addEventListener('pagehide', () => { if (feedHandle) try { feedHandle.stop(); } catch (e) {} });
+window.addEventListener('pagehide', () => {
+  if (feedHandle) try { feedHandle.stop(); } catch (e) {}
+  if (signalHandle) try { signalHandle.stop(); } catch (e) {}
+});
 
 // ---- boot ----
 (async function boot() {
   if (typeof initTradesUI === 'function') initTradesUI({ css });
   buildHeader();
   await rebuild();
+  if (MODE === 'live') signalHandle = startSignalFeed(
+    SYMBOL, CONFIG.panes.map((p) => p.tf), applySignalEvents,
+    (connected) => { document.body.dataset.signals = connected ? 'live' : 'stale'; },
+  );
   setSpeed('Fast');
   start();
 })();

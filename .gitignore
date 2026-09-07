@@ -1,6 +1,9 @@
 # Real secrets — copy the .example file and fill in your own values.
 demo/ai.env
 demo/youtube.env
+config/ai.env
+config/signals.env
+config/youtube.env
 demo/token.json
 token.json
 .env

@@ -4,6 +4,7 @@ services:
   mediamtx:
     image: docker.io/bluenviron/mediamtx:1.20.1
     restart: unless-stopped
+    networks: [default, signals]
     volumes:
       - ./demo/gstreamer/mediamtx.yml:/mediamtx.yml:ro
     ports:
@@ -25,6 +26,9 @@ services:
     env_file:
       - ./config/stream.env
       - ./.env
+      - ./config/ai.env
+      - ./config/signals.env
+      - ./config/youtube.env
     environment:
       RTMP_TARGET: rtmp://127.0.0.1:1935/raw
       SCENE_BASE: http://127.0.0.1:8080
@@ -50,6 +54,8 @@ services:
     env_file:
       - ./config/stream.env
       - ./.env
+      - ./config/ai.env
+      - ./config/youtube.env
     environment:
       INPUT_URL: rtmp://127.0.0.1:1935/raw
       OUTPUT_URL: ${YOUTUBE_RTMP_URL:?set YOUTUBE_RTMP_URL in .env}
@@ -65,3 +71,9 @@ services:
 
 volumes:
   stream-state:
+
+networks:
+  default: {}
+  signals:
+    external: true
+    name: signald_backend

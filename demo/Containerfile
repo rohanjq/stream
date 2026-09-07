@@ -33,7 +33,7 @@ RUN set -eux; \
 # installation fails instead of producing a partially working image.
 RUN pip install --break-system-packages \
     kokoro-onnx==0.6.1 soundfile==0.13.1 \
-    grpcio==1.74.0 grpcio-tools==1.74.0
+    grpcio==1.74.0 grpcio-tools==1.74.0 websocket-client==1.8.0
 
 # Generate the official YouTube liveChatMessages.streamList client from the
 # documented protocol. Keeping the proto in source makes schema changes clear.

@@ -7,6 +7,8 @@ services:
     networks: [default, signals]
     volumes:
       - ./demo/gstreamer/mediamtx.yml:/mediamtx.yml:ro
+    security_opt:
+      - label=disable
     ports:
       - "${STREAM_BIND_ADDRESS:-127.0.0.1}:8080:8080"
       - "${STREAM_BIND_ADDRESS:-127.0.0.1}:${OPERATOR_HOST_PORT:-8082}:8082"

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Night Shift Operator</title>
-  <link rel="stylesheet" href="/styles.css?v=2">
-  <script defer src="/app.js?v=2"></script>
+  <link rel="stylesheet" href="/styles.css?v=3">
+  <script defer src="/app.js?v=3"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -52,7 +52,7 @@
             <section class="preview-region">
               <div class="section-heading">
                 <div><p class="eyebrow">Program output</p><h2>Live scene</h2></div>
-                <span class="live-flag"><i></i>Live</span>
+                <span class="live-flag" id="liveFlag" aria-live="polite"><i></i><span id="liveFlagText">Checking</span></span>
               </div>
               <div class="preview-frame">
                 <iframe id="scenePreview" title="Live stream scene" loading="eager"></iframe>

@@ -36,6 +36,8 @@ const state = {
   selectedLayout: "grid",
   selectedTimeframes: ["1m", "5m", "15m", "1h"],
   lastSync: null,
+  connectionOk: false,
+  refreshing: false,
   refreshTimer: null,
 };
 
@@ -96,9 +98,15 @@ function setDot(element, mode) {
 function selectView(name, updateHash = true) {
   if (!VIEW_COPY[name]) name = "overview";
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
-  $$(".nav-item[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
+  $$(".nav-item[data-view]").forEach((button) => {
+    const active = button.dataset.view === name;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
   $("#viewTitle").textContent = VIEW_COPY[name][0];
   $("#viewEyebrow").textContent = VIEW_COPY[name][1];
+  document.title = `${VIEW_COPY[name][0]} · Night Shift Operator`;
   if (updateHash) history.replaceState(null, "", `#${name}`);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -171,6 +179,10 @@ function renderOverview() {
   const audience = state.audience || {};
   const speech = state.speech || {};
   const control = state.control;
+  const onAir = Boolean(health.scene && state.compositorHealth?.status === "ok");
+  $("#liveFlag").classList.toggle("on-air", onAir);
+  $("#liveFlag").classList.toggle("standby", !onAir);
+  $("#liveFlagText").textContent = onAir ? "On air" : "Standby";
   setDot($("#sceneService"), health.scene ? "healthy" : "unhealthy");
   setDot($("#musicService"), health.music ? "healthy" : "unhealthy");
   setDot($("#youtubeService"), youtube.connected ? "healthy" : youtube.configured ? "warning" : "unhealthy");
@@ -342,9 +354,10 @@ function formatElapsed(seconds) {
 }
 
 function renderConnection(ok) {
+  state.connectionOk = ok;
   setDot($("#syncDot"), ok ? "healthy" : "unhealthy");
   setDot($("#railHealthDot"), ok ? (state.health?.status === "degraded" ? "warning" : "healthy") : "unhealthy");
-  $("#syncText").textContent = ok ? "Synced" : "Connection lost";
+  $("#syncText").textContent = ok ? "Synced now" : "Connection lost";
   $("#railHealthText").textContent = ok ? (state.health?.status === "degraded" ? "Degraded" : "Systems online") : "API unavailable";
 }
 
@@ -360,6 +373,9 @@ function renderAll() {
 }
 
 async function refresh(options = {}) {
+  if (state.refreshing) return;
+  state.refreshing = true;
+  try {
   const requests = {
     health: api("/api/health"),
     control: api("/api/control"),
@@ -395,6 +411,9 @@ async function refresh(options = {}) {
   const healthIndex = entries.findIndex(([key]) => key === "health");
   renderConnection(results[healthIndex]?.status === "fulfilled");
   if (options.notify) toast(successCount === entries.length ? "Control data refreshed" : `Refreshed ${successCount} of ${entries.length} services`, successCount ? "warning" : "error");
+  } finally {
+    state.refreshing = false;
+  }
 }
 
 async function compositorAction(path, body, successMessage) {
@@ -672,6 +691,10 @@ function setupSettings() {
 function setupClock() {
   const update = () => {
     $("#clock").textContent = new Date().toLocaleTimeString([], { hour12: false });
+    if (state.connectionOk && state.lastSync) {
+      const age = Math.max(0, Math.floor((Date.now() - state.lastSync) / 1000));
+      $("#syncText").textContent = age < 2 ? "Synced now" : `Synced ${age}s ago`;
+    }
     if (state.music?.playing) {
       state.music.elapsed_seconds = Number(state.music.elapsed_seconds || 0) + 1;
       $("#musicElapsed").textContent = formatElapsed(state.music.elapsed_seconds);
@@ -696,6 +719,9 @@ async function start() {
   setupSettings();
   setupClock();
   $("#refreshAll").addEventListener("click", () => refresh({ notify: true }));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refresh().catch(() => renderConnection(false));
+  });
   try { await refresh(); }
   catch (error) { renderConnection(false); toast(error.message, "error"); }
   state.refreshTimer = window.setInterval(() => refresh().catch(() => renderConnection(false)), 5000);

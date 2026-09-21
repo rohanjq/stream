@@ -7,7 +7,10 @@ compose_command
 cd "$PROJECT_ROOT"
 
 "${COMPOSE[@]}" config >/dev/null
-"${COMPOSE[@]}" up -d --build
+# podman-compose does not reliably recreate an existing container when only an
+# env_file or image contents change. Force recreation so live symbol, endpoint,
+# and credential rotations cannot leave a stale long-running stream process.
+"${COMPOSE[@]}" up -d --build --force-recreate
 
 echo "Waiting for the scene API..."
 for _ in $(seq 1 60); do

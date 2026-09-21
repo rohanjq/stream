@@ -14,6 +14,7 @@ try:
 except ImportError:  # Host-side unit tests do not install container dependencies.
     websocket = None
 import ai
+import agent_runtime
 import audience_commands
 import youtube_chat
 
@@ -109,6 +110,13 @@ SIGNALD_WS_URL = os.environ.get(
 SIGNALD_API_TOKEN = os.environ.get("SIGNALD_API_TOKEN", "")
 DISPLAY_EMA_PERIODS = frozenset((50, 200))
 SIGNAL_TIMEFRAMES = ("1m", "5m", "15m", "1h")
+AGENT_ENABLED = os.environ.get("AGENT_ENABLED", "true").lower() not in (
+    "0", "false", "no")
+AGENT_COMMENTARY_INTERVAL_SECONDS = max(
+    60, int(os.environ.get("AGENT_COMMENTARY_INTERVAL_SECONDS", "120")))
+AGENT_MEMORY_THRESHOLD_COMMENTS = max(
+    2, int(os.environ.get("AGENT_MEMORY_THRESHOLD_COMMENTS", "10")))
+AGENT_ASSET_LABEL = os.environ.get("AGENT_ASSET_LABEL", "Bitcoin")
 
 
 class SignalBridge:
@@ -298,6 +306,7 @@ _messages = []          # each: {id, who, text, kind, ts}
 _next_id = 1
 _youtube_bridge = None
 _signal_bridge = None
+_agent_runtime = None
 _youtube_policy_lock = threading.Lock()
 _youtube_policy = {
     "speak_mode": YOUTUBE_SPEAK_MODE,
@@ -752,6 +761,11 @@ def _audience_command_announcement(decision, message):
 
 def on_youtube_message(message):
     """Record a viewer comment and route it through the command agent."""
+    if _agent_runtime:
+        try:
+            _agent_runtime.observe_viewer_message(message)
+        except Exception as exc:
+            print(f"[agent] viewer observation failed: {exc}", flush=True)
     add_message(message["author"], message["text"], "viewer", metadata={
         "platform": "youtube", "youtube_message_id": message.get("id", ""),
         "is_moderator": message.get("is_moderator", False),
@@ -841,7 +855,9 @@ def _speech_worker():
                 if time.time() - last_youtube_spoken < policy["cooldown_seconds"]:
                     continue
                 if policy["speak_mode"] == "all":
-                    reply, source = ai.generate(message["text"])
+                    context = (_agent_runtime.reply_context(message)
+                               if _agent_runtime else None)
+                    reply, source = ai.generate(message["text"], context=context)
                     should_speak = True
                 else:
                     should_speak, reply, source = ai.choose_live_reply(
@@ -861,6 +877,8 @@ def _speech_worker():
                                 "priority": item["priority"]}
                     add_message("AI host", reply, item["display_kind"],
                                 audio_ms=ms, audio_url=url, metadata=metadata)
+                    if message and _agent_runtime:
+                        _agent_runtime.record_reply(message, reply, metadata)
                     # Give the browser poll/lipsync path a small head start.
                     if SPEECH_LIPSYNC_LEAD_SECONDS:
                         time.sleep(SPEECH_LIPSYNC_LEAD_SECONDS)
@@ -988,6 +1006,12 @@ class Handler(BaseHTTPRequestHandler):
                 "router": AUDIENCE_COMMAND_ROUTER,
             })
 
+        if parsed.path == "/api/agent/status":
+            if not _agent_runtime:
+                return self._json(503, {"enabled": False,
+                                        "error": "agent runtime unavailable"})
+            return self._json(200, _agent_runtime.status())
+
         if parsed.path in ("/api/music/status", "/api/music/catalog"):
             try:
                 suffix = "/status" if parsed.path.endswith("/status") else "/catalog"
@@ -1040,6 +1064,7 @@ class Handler(BaseHTTPRequestHandler):
                         "/api/youtube/publish", "/api/youtube/policy",
                         "/api/voice", "/api/speech/trigger",
                         "/api/audience/policy", "/api/music/play",
+                        "/api/agent/events",
                         "/api/music/next", "/api/music/previous",
                         "/api/music/pause", "/api/music/resume",
                         "/api/music/volume"):
@@ -1050,6 +1075,16 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "bad json"})
+
+        if path == "/api/agent/events":
+            if not self._external_action_authorized():
+                return self._json(401, {"error": "unauthorized"})
+            if not _agent_runtime:
+                return self._json(503, {"error": "agent runtime unavailable"})
+            try:
+                return self._json(202, _agent_runtime.ingest_external(payload))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
 
         if path == "/api/control":
             if not self._control_authorized():
@@ -1179,6 +1214,41 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     _signal_bridge = SignalBridge()
     print(f"[signals] configured={_signal_bridge.start()}", flush=True)
+    def signal_snapshot(symbol, timeframe):
+        payload = _signal_bridge.payload(symbol, timeframe, -1)
+        latest = {}
+        for event in payload.get("data", []):
+            data = event.get("data", {})
+            try:
+                period = int(data["analysis"]["parameters"]["period"])
+                candidate = {"value": float(data["outputs"][0]["value"]),
+                             "open_time": data["bar"]["open_time"],
+                             "status": data["bar"]["status"],
+                             "revision": int(data.get("analysis_revision", 0))}
+            except (KeyError, IndexError, TypeError, ValueError):
+                continue
+            previous = latest.get(period)
+            identity = (candidate["open_time"], candidate["revision"],
+                        candidate["status"] == "confirmed")
+            if previous is None or identity > previous[0]:
+                latest[period] = (identity, candidate)
+        return {f"ema_{period}": candidate for period, (_identity, candidate)
+                in latest.items() if period in DISPLAY_EMA_PERIODS}
+
+    _agent_runtime = agent_runtime.AgentRuntime(
+        store=agent_runtime.AgentStore(os.path.join(STATE_DIR, "agent.sqlite3")),
+        market=agent_runtime.MarketFeed(OHLC_WS_URL, OHLC_SYMBOL),
+        speaker=queue_speech,
+        llm=ai,
+        signal_snapshot=signal_snapshot,
+        asset_label=AGENT_ASSET_LABEL,
+        commentary_interval=AGENT_COMMENTARY_INTERVAL_SECONDS,
+        memory_threshold=AGENT_MEMORY_THRESHOLD_COMMENTS,
+        enabled=AGENT_ENABLED,
+    )
+    _agent_runtime.start()
+    print(f"[agent] enabled={AGENT_ENABLED} symbol={OHLC_SYMBOL} "
+          f"interval={AGENT_COMMENTARY_INTERVAL_SECONDS}s", flush=True)
     _youtube_bridge = youtube_chat.bridge_from_env(on_youtube_message)
     started = _youtube_bridge.start()
     print(f"[youtube] configured={_youtube_bridge.status()['configured']} "
